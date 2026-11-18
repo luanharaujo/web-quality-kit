@@ -36,12 +36,20 @@ elif [[ "$MODE" == pr ]]; then
     printf '[extend]\nuseDefault = true\n' > "$OUT/base.gitleaks.toml"; cfg=(--config "$OUT/base.gitleaks.toml")
   fi
 elif [[ -f .gitleaks.toml ]]; then cfg=(--config .gitleaks.toml); fi
+# Pull request: ignore lists also come from the base branch, and inline
+# "gitleaks:allow" comments do not count.
+extra=()
+if [[ "$MODE" == pr ]]; then
+  mkdir -p "$OUT/base-ignore"
+  git show "origin/${BASE}:.gitleaksignore" > "$OUT/base-ignore/.gitleaksignore" 2>/dev/null || : > "$OUT/base-ignore/.gitleaksignore"
+  extra=(--gitleaks-ignore-path "$OUT/base-ignore" --ignore-gitleaks-allow)
+fi
 case "$MODE" in
   pr)   opts="origin/${BASE:?}..HEAD" ;;
   push) opts="${RANGE:-HEAD~1..HEAD}" ;;
   *)    opts="--all" ;;
 esac
-gitleaks git ${cfg[@]+"${cfg[@]}"} --no-banner --redact --exit-code 0 --log-opts="$opts" \
+gitleaks git ${cfg[@]+"${cfg[@]}"} ${extra[@]+"${extra[@]}"} --no-banner --redact --exit-code 0 --log-opts="$opts" \
   --report-format json --report-path "$OUT/gitleaks.json" . > "$OUT/gitleaks.log" 2>&1
 grc=$?
 if [[ $grc -ne 0 || ! -s "$OUT/gitleaks.json" ]]; then
@@ -57,6 +65,14 @@ else
 fi
 
 # --- code patterns -------------------------------------------------------
+# Semgrep only reads the .semgrepignore of the checked-out code. A pull request
+# that changes it is not scanned on trust: it fails, and the owner reviews the
+# change (then it can go in on its own pull request, approved by a person).
+if [[ "$MODE" == pr ]] && ! git diff --quiet "origin/${BASE}...HEAD" -- .semgrepignore; then
+  echo "| 🔴 | Code patterns (Semgrep CE) | this pull request changes .semgrepignore: review it by hand |" >> "$md"
+  echo "::error::.semgrepignore changed in this pull request: Semgrep's exclusions need a person's review"
+  fail=1
+fi
 sargs=(scan --config "${SEMGREP_CONFIG:-p/ci}" --metrics=off --json --output "$OUT/semgrep.json" --quiet)
 # In a pull request "# nosemgrep" comments do not count: one added there could
 # hide its own finding.
