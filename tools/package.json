@@ -6,7 +6,7 @@
   "dependencies": {
     "@eslint/css": "2.0.1",
     "@eslint/js": "10.0.1",
-    "@lhci/cli": "0.16.0",
+    "@lhci/cli": "0.16.1",
     "eslint": "10.14.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.14.0",
