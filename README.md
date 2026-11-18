@@ -71,6 +71,8 @@ jobs:
 
 The workflow must also run on `push` to the default branch, so main's numbers are saved. Dependabot: copy `templates/dependabot.yml`.
 
+**A required check never has a paths filter in its trigger.** If the ruleset requires a check and its workflow has `paths:` under `pull_request`, a pull request that touches none of those paths never gets the check and stays blocked forever. Run the job on every pull request and skip the work inside it (compare with the base branch, e.g. `git diff --name-only origin/$BASE...HEAD`).
+
 A public value the personal-data check should accept (the business phone on the contact page) goes into `.data-guard-allow` at the repository root: one hash per line (the hash is in the panel), with a comment saying what it is.
 
 ## Run it on a laptop

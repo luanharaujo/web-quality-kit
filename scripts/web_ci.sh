@@ -151,7 +151,7 @@ if [[ "${MODERN:-}" == "true" ]]; then
   for dir in ${LINT_PATHS:-.}; do
     [[ -d "$dir" ]] || continue
     i=$((i + 1))
-    DISABLE_TELEMETRY=1 "$BIN/modern-web-guidance" legacy-scan "$dir" --json > "$OUT/legacy_$i.json" 2> "$OUT/legacy_$i.err" \
+    DISABLE_TELEMETRY=1 "$BIN/modern-web-guidance" legacy-scan "$dir" --json ${MWG_INCLUDE_TESTS:+--include-docs-and-tests} > "$OUT/legacy_$i.json" 2> "$OUT/legacy_$i.err" \
       || { echo "::warning::legacy-scan failed in $dir"; cat "$OUT/legacy_$i.err"; echo '{}' > "$OUT/legacy_$i.json"; }
     args+=(--legacy "$dir:$OUT/legacy_$i.json")
   done

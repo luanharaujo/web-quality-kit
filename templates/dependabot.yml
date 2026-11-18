@@ -1,17 +1,29 @@
-# Copy to .github/dependabot.yml and list each folder with a package-lock.json.
-# Security updates arrive as pull requests; version updates once a week,
-# grouped, so they do not flood the review queue.
+# Copy to .github/dependabot.yml and add one npm entry per folder with a
+# package-lock.json. A new version waits a few days (cooldown) so a bad release
+# is usually pulled before it arrives; security fixes do not wait. Minor and
+# patch updates come grouped; majors come one by one.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /app
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
-      all:
-        patterns: ["*"]
+      npm:
+        applies-to: version-updates
+        update-types: [minor, patch]
     open-pull-requests-limit: 3
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        applies-to: version-updates
+        update-types: [minor, patch]
