@@ -130,6 +130,8 @@ if [[ "${MODERN:-}" == "true" ]]; then
   log "Modern web (Baseline CSS, legacy-scan)"
   KIT_LINT_ROOT="$PWD" "$BIN/eslint" --config "$KIT/tools/eslint.css.config.mjs" --no-warn-ignored \
     --format json . > "$OUT/modern.json"
+  rc=$?
+  if [[ $rc -gt 1 ]]; then echo "::error::ESLint (Baseline CSS) did not run (exit $rc)"; exit 1; fi
   args+=(--modern "$OUT/modern.json")
   # Old code with a native replacement (Modern Web Guidance by the Chrome,
   # Edge, Firefox and MDN teams), on the same paths as the lint.

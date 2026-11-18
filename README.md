@@ -85,3 +85,5 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 ## Kit's own tests
 
 `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/casos/site`). They run in `.github/workflows/check.yml`.
+
+The test cases in `tests/casos/` contain made-up personal data on purpose (the bad cases the guard must catch).

@@ -32,6 +32,7 @@ CONFIG_JSON = re.compile(r"(^|/)(package(-lock)?|tsconfig[\w.-]*|jsconfig|manife
                          r"renovate|\.eslintrc|composer|deno|wrangler|vercel|firebase|"
                          r"\.?prettierrc|turbo|nx|app|bower)\.json$")
 SKIP_DIRS = ("node_modules/", ".git/")
+MAX_BYTES = 5 * 1024 * 1024  # bigger text files are generated, not typed by someone
 THIRD_PARTY = re.compile(r"(^|/)vendor/|\.min\.(js|css)$")
 # Test fixtures use made-up mobile numbers 9 0000-xxxx; nobody has one.
 FAKE_PHONE = re.compile(r"^9000")
@@ -142,6 +143,8 @@ def scan(root, paths, allow):
         if ext not in TEXT_EXT and os.path.basename(rel) not in (".env", ".dev.vars"):
             continue
         try:
+            if os.path.getsize(os.path.join(root, rel)) > MAX_BYTES:
+                continue
             text = open(os.path.join(root, rel), encoding="utf-8", errors="replace").read()
         except OSError:
             continue
