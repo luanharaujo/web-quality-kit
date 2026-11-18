@@ -100,8 +100,9 @@ def link_cases(path):
     out = []
     for link in data.get("links", []):
         if link.get("state") == "BROKEN":
-            out.append({"file": link.get("parent", ""), "rule": str(link.get("status", "")),
-                        "line": 0, "text": link.get("url", "")})
+            strip = lambda u: re.sub(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?", "", u or "")
+            out.append({"file": strip(link.get("parent", "")), "rule": str(link.get("status", "")),
+                        "line": 0, "text": strip(link.get("url", ""))})
     return out
 
 
