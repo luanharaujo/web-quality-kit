@@ -32,3 +32,27 @@ jobs:
       # Every tool runs on a small bad site and each problem must show up.
       - name: Tool proofs (bad site caught)
         run: bash tests/test_collect.sh
+
+  # The action itself, as a repository would call it, on the bad site. On
+  # main it saves the numbers; on a pull request it compares with them, so
+  # the download of main's artifact is exercised too.
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ./actions/web-ci
+        with:
+          lint-paths: tests/casos/site
+          html-globs: tests/casos/site/*.html
+          site-dir: tests/casos/site
+          lighthouse-paths: /
+          lighthouse-runs: "1"
+          bundle-dir: tests/casos/site
+          data-guard: "true"

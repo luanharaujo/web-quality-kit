@@ -121,6 +121,9 @@ runs:
               base="$OUT/base/health.json"; break
             fi
           done
+          if [[ "$base" == "-" ]]; then
+            echo "::warning::No health numbers from $MAIN: this pull request is compared with nothing (baseline)"
+          fi
         fi
         rc=0
         python3 "$KIT/scripts/web_health.py" compare "$base" "$OUT/health.json" "${flags[@]}" \
