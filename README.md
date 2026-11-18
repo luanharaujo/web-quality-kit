@@ -75,6 +75,23 @@ The workflow must also run on `push` to the default branch, so main's numbers ar
 
 A public value the personal-data check should accept (the business phone on the contact page) goes into `.data-guard-allow` at the repository root: one hash per line (the hash is in the panel), with a comment saying what it is.
 
+## After the deploy: is it live? (`actions/web-live`)
+
+A job after the deploy checks that each page answers 200 and is byte for byte the file this run published. That catches a deploy that did not happen, or a part still at its old version. A CDN can keep the old page for a few minutes, so it asks again with a cache-skipping query string (10 rounds, 30 s apart by default) and fails the job if a page still differs.
+
+```yaml
+  live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: luanharaujo/web-quality-kit/actions/web-live@v1.1.0
+        with:
+          base-url: https://example.com
+          pages-artifact: "true"   # the files actions/deploy-pages published in this run
+          paths: / /adm/versao.json /treinos/
+```
+
 ## Run it on a laptop
 
 ```sh

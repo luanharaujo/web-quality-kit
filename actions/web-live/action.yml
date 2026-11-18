@@ -1,0 +1,69 @@
+# After a deploy: is the live site the one this run published? Each page must
+# answer 200 and match the published file byte for byte (a stale CDN copy or a
+# deploy that did not happen fails). Retries with a cache-skipping query string,
+# since a CDN can keep the old page for a few minutes. Fails the job otherwise.
+#
+# Usage, in a job after the deploy job:
+#   - uses: luanharaujo/web-quality-kit/actions/web-live@v1.1.0
+#     with:
+#       base-url: https://example.com
+#       pages-artifact: "true"     # compare with what actions/deploy-pages published
+#       paths: / /adm/versao.json /treinos/
+name: Web live check
+description: Checks that the live site is the version this run published.
+
+inputs:
+  base-url:
+    description: Address of the live site.
+    required: true
+  paths:
+    description: Pages to check, space separated ("/" = /index.html).
+    default: /
+  site-dir:
+    description: Folder with the published files. Empty = only check for HTTP 200.
+    default: ""
+  pages-artifact:
+    description: '"true" = download this run''s GitHub Pages artifact and compare with it.'
+    default: "false"
+  tries:
+    description: Rounds before giving up.
+    default: "10"
+  wait-seconds:
+    description: Wait between rounds.
+    default: "30"
+
+runs:
+  using: composite
+  steps:
+    - name: Get the published files (GitHub Pages artifact)
+      if: inputs.pages-artifact == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: github-pages
+        path: ${{ runner.temp }}/pages-artifact
+
+    - name: Check the live site
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        BASE_URL: ${{ inputs.base-url }}
+        PATHS: ${{ inputs.paths }}
+        SITE_DIR: ${{ inputs.site-dir }}
+        FROM_PAGES: ${{ inputs.pages-artifact }}
+        TRIES: ${{ inputs.tries }}
+        WAIT: ${{ inputs.wait-seconds }}
+      run: |
+        site="$SITE_DIR"
+        if [[ "$FROM_PAGES" == "true" ]]; then
+          site="$RUNNER_TEMP/pages-site"
+          mkdir -p "$site"
+          tar -xf "$RUNNER_TEMP/pages-artifact/artifact.tar" -C "$site"
+        fi
+        args=(--base-url "$BASE_URL" --tries "$TRIES" --wait "$WAIT" --salt "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")
+        [[ -n "$site" ]] && args+=(--site-dir "$site")
+        for p in $PATHS; do args+=(--path "$p"); done
+        rc=0
+        python3 "$KIT/scripts/live_check.py" "${args[@]}" > "$RUNNER_TEMP/live.md" || rc=$?
+        cat "$RUNNER_TEMP/live.md" >> "$GITHUB_STEP_SUMMARY"
+        cat "$RUNNER_TEMP/live.md"
+        exit $rc

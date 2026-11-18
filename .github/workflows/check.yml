@@ -29,6 +29,7 @@ jobs:
         run: |
           python3 tests/test_web_health.py
           python3 tests/test_data_guard.py
+          python3 tests/test_live_check.py
       # Every tool runs on a small bad site and each problem must show up.
       - name: Tool proofs (bad site caught)
         run: bash tests/test_collect.sh
