@@ -20,7 +20,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Personal data and secrets | `scripts/data_guard.py`: CPF/CNPJ with valid check digits, mobile numbers, e-mails, data files, tokens. Values are never printed, only masked and hashed | `data-guard: "true"` (public repositories) |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
 
-Tools are pinned in `tools/package-lock.json` and installed with `npm ci`; a new tool version is a pull request here.
+Tools are pinned in `tools/package-lock.json` and installed with `npm ci --ignore-scripts` (no install script of any dependency runs); a new tool version is a pull request here.
 
 ## Health against main ("do not get worse")
 
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci && npm run build
+      - run: npm ci --ignore-scripts && npm run build
         working-directory: app
       - uses: luanharaujo/web-quality-kit/actions/web-ci@v1
         with:
@@ -95,7 +95,7 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
 ## Run it on a laptop
 
 ```sh
-(cd tools && npm ci)
+(cd tools && npm ci --ignore-scripts)
 cd ../my-site
 LINT_PATHS="src" SITE_DIR=dist LH_PATHS="/" LH_RUNS=1 OUT=/tmp/health bash ../web-quality-kit/scripts/web_ci.sh
 python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.json

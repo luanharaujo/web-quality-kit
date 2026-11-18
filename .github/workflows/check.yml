@@ -24,7 +24,7 @@ jobs:
           node-version: 22
       - name: Install the kit's tools (pinned, from the lockfile)
         working-directory: tools
-        run: npm ci --no-fund --no-audit --loglevel=error
+        run: npm ci --ignore-scripts --no-fund --no-audit --loglevel=error
       - name: Script tests
         run: |
           python3 tests/test_web_health.py

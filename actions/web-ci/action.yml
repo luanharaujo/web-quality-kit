@@ -71,7 +71,7 @@ runs:
     - name: Install the kit's tools
       shell: bash
       working-directory: ${{ github.action_path }}/../../tools
-      run: npm ci --no-fund --no-audit --loglevel=error
+      run: npm ci --ignore-scripts --no-fund --no-audit --loglevel=error
 
     - name: Run the checks
       shell: bash
