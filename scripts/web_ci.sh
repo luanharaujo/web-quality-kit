@@ -80,8 +80,16 @@ fi
 
 if [[ -n "${SITE_DIR:-}" ]]; then
   log "Broken links (only this site's own links)"
-  "$BIN/linkinator" "$SITE_DIR" --recurse --format json --skip '^https?://(?!(localhost|127\.0\.0\.1)[:/])' \
+  # Our own static server, so root-relative links (/treinos/assets/...) resolve
+  # the way they do on the real site; the check starts at each Lighthouse page.
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  python3 -m http.server "$port" --bind 127.0.0.1 --directory "$SITE_DIR" > "$OUT/http.log" 2>&1 & SERVER=$!
+  for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.1; done
+  starts=()
+  for p in ${LH_PATHS:-${SITE_MOUNT:-}/}; do starts+=("http://127.0.0.1:$port$p"); done
+  "$BIN/linkinator" "${starts[@]}" --recurse --format json --skip '^https?://(?!(localhost|127\.0\.0\.1)[:/])' \
     > "$OUT/links.json" 2> "$OUT/links.err"
+  kill "$SERVER" 2>/dev/null
   python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$OUT/links.json" 2>/dev/null \
     || { echo "::warning::linkinator gave no report"; cat "$OUT/links.err"; echo '{}' > "$OUT/links.json"; }
   args+=(--links "$OUT/links.json")
