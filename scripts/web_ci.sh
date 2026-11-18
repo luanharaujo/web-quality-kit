@@ -29,7 +29,7 @@ log() { echo "::group::$1"; }
 end() { echo "::endgroup::"; }
 
 if [[ ! -x "$BIN/eslint" ]]; then
-  (cd "$KIT/tools" && npm ci --no-fund --no-audit --loglevel=error) || { echo "::error::Could not install the kit's tools"; exit 1; }
+  (cd "$KIT/tools" && npm ci --ignore-scripts --no-fund --no-audit --loglevel=error) || { echo "::error::Could not install the kit's tools"; exit 1; }
 fi
 
 if [[ -n "${LINT_PATHS:-}" ]]; then
