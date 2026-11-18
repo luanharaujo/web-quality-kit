@@ -33,8 +33,8 @@ import sys
 from collections import Counter
 
 SEVERITIES = ["critical", "high", "moderate", "low"]
-LH_CATEGORIES = [("performance", "Desempenho"), ("accessibility", "Acessibilidade"),
-                 ("best-practices", "Boas práticas"), ("seo", "SEO")]
+LH_CATEGORIES = [("performance", "Performance"), ("accessibility", "Accessibility"),
+                 ("best-practices", "Best practices"), ("seo", "SEO")]
 
 
 def rel(path, root):
@@ -247,8 +247,41 @@ def bar(fraction, width=10):
     return "`" + "▓" * full + "░" * (width - full) + "`"
 
 
+# Panel language: English by default, Portuguese with --lang pt.
+PT = {
+    "Tests": "Testes", "{p} pass, {f} fail": "{p} passam, {f} falham",
+    "none fails; do not go down": "nenhum falha; não diminuir",
+    "Types (strict tsc)": "Tipos (tsc estrito)", "Valid HTML": "HTML válido", "Broken links": "Links quebrados",
+    "Accessibility (axe)": "Acessibilidade (axe)",
+    "Personal data or secret in the repository": "Dado pessoal ou segredo no repositório",
+    "Modern web: old code with a native replacement (warning only)":
+        "Web moderna: código antigo com recurso nativo (só aviso)",
+    "{n} new": "{n} novos", "none new": "nenhum novo", "warning only": "só aviso", "new": "novos",
+    "existing": "existentes", "| Where | Rule | Detail |": "| Onde | Regra | Detalhe |", "{n} more": "mais {n}",
+    "grow up to {g}%": "crescer até {g}%", "max {m} kB": "máx {m} kB",
+    "Bundle size (JS+CSS, gzip)": "Tamanho do pacote (JS+CSS, gzip)",
+    "Performance": "Desempenho", "Accessibility": "Acessibilidade", "Best practices": "Boas práticas",
+    "(worst page)": "(pior página)", "min 90 (warning only)": "mín 90 (só aviso)",
+    "Vulnerable dependencies (npm audit)": "Dependências vulneráveis (npm audit)",
+    "{c} critical, {h} high, {m} moderate, {l} low": "{c} crít, {h} altas, {m} médias, {l} baixas",
+    "high+critical do not go up": "altas+críticas não subir", "Vulnerable packages": "Pacotes vulneráveis",
+    "| Package | Severity |": "| Pacote | Gravidade |",
+    "## Web health (baseline)": "## Saúde web (linha de base)",
+    "## Web health (against main)": "## Saúde web (contra a main)",
+    "| | Item | Now | Limit | vs main |": "| | Item | Agora | Limite | vs main |",
+    "First measure: nothing fails; from now on, \"do not get worse\".":
+        "Primeira medida: nada falha; daqui em diante vale \"não piorar\".",
+}
+LANG = "en"
+
+
+def T(text):
+    return PT.get(text, text) if LANG == "pt" else text
+
+
 def num(x, decimals=0):
-    return f"{x:.{decimals}f}".replace(".", ",")
+    text = f"{x:.{decimals}f}"
+    return text.replace(".", ",") if LANG == "pt" else text
 
 
 def arrow(diff, decimals=0, higher_is_better=True):
@@ -258,14 +291,16 @@ def arrow(diff, decimals=0, higher_is_better=True):
     return f"{'↑' if better else '↓'} {'+' if diff > 0 else '−'}{num(abs(diff), decimals)}"
 
 
-CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Tipos (tsc estrito)"),
-                ("html", "HTML válido"), ("links", "Links quebrados"), ("axe", "Acessibilidade (axe)"),
-                ("data", "Dado pessoal/segredo no repositório"),
-                ("modern", "Web moderna: legado com recurso nativo (só aviso)")]
+CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
+                ("html", "Valid HTML"), ("links", "Broken links"), ("axe", "Accessibility (axe)"),
+                ("data", "Personal data or secret in the repository"),
+                ("modern", "Modern web: old code with a native replacement (warning only)")]
 WARN_ONLY = {"modern"}
 
 
 def compare(a):
+    global LANG
+    LANG = a.lang
     head = json.load(open(a.head))["metrics"]
     base = None if a.base == "-" else json.load(open(a.base))["metrics"]
     first = base is None
@@ -280,9 +315,10 @@ def compare(a):
         good = t["failed"] == 0 and t["exit"] == 0
         ok = first or (good and (not bt or t["passed"] >= bt["passed"]))
         vs = "—" if not bt else arrow(t["passed"] - bt["passed"])
-        row(ok, not good, "Testes", f"{t['passed']} passam, {t['failed']} falham", "nenhum falha; não diminuir", vs)
+        row(ok, not good, T("Tests"), T("{p} pass, {f} fail").format(p=t["passed"], f=t["failed"]),
+            T("none fails; do not go down"), vs)
         if not ok:
-            failed.append("testes")
+            failed.append("tests")
 
     for name, label in CASE_METRICS:
         if name not in head:
@@ -294,21 +330,21 @@ def compare(a):
         gate = name not in WARN_ONLY
         ok = not (new and gate)
         vs = "—" if first or not known else arrow(len(cases) - len(base[name]), higher_is_better=False)
-        extra = f" ({len(new)} novos)" if new else ""
-        row(ok, len(cases) > 0, label, f"{len(cases)}{extra}", "nenhum novo" if gate else "só aviso", vs)
+        extra = " (" + T("{n} new").format(n=len(new)) + ")" if new else ""
+        row(ok, len(cases) > 0, T(label), f"{len(cases)}{extra}", T("none new") if gate else T("warning only"), vs)
         if not ok:
             failed.append(label)
         show = new if new else cases
         if show:
-            title = f"{label}: {'novos' if new else 'existentes'} ({len(show)})"
-            details += [f"<details><summary>{title}</summary>", "", "| Onde | Regra | Detalhe |", "|---|---|---|"]
+            title = f"{T(label)}: {T('new') if new else T('existing')} ({len(show)})"
+            details += [f"<details><summary>{title}</summary>", "", T("| Where | Rule | Detail |"), "|---|---|---|"]
             for c in show[:60]:
                 where = f"{c['file']}:{c['line']}" if c.get("line") else c["file"]
                 text = c.get("masked") if name == "data" else c["text"]
                 text = (text or "").replace("|", "\\|")[:90]
                 details.append(f"| `{where}` | {c['rule']} | {text} |")
             if len(show) > 60:
-                details.append(f"| … | | mais {len(show) - 60} |")
+                details.append("| … | | " + T("{n} more").format(n=len(show) - 60) + " |")
             details += ["", "</details>", ""]
 
     if "bundle" in head:
@@ -317,13 +353,13 @@ def compare(a):
         ok = first or growth <= a.bundle_growth_pct
         over = bool(b.get("max_kb")) and b["gzip_kb"] > b["max_kb"]
         frac = b["gzip_kb"] / b["max_kb"] if b.get("max_kb") else 0
-        lim = f"máx {num(b['max_kb'])} kB; crescer até {num(a.bundle_growth_pct)}%" if b.get("max_kb") \
-            else f"crescer até {num(a.bundle_growth_pct)}%"
+        grow = T("grow up to {g}%").format(g=num(a.bundle_growth_pct))
+        lim = T("max {m} kB").format(m=num(b["max_kb"])) + "; " + grow if b.get("max_kb") else grow
         vs = "—" if not bb else arrow(b["gzip_kb"] - bb["gzip_kb"], 1, higher_is_better=False)
-        row(ok, over, "Tamanho do pacote (JS+CSS, gzip)",
+        row(ok, over, T("Bundle size (JS+CSS, gzip)"),
             f"{bar(frac) + ' ' if frac else ''}{num(b['gzip_kb'], 1)} kB", lim, vs)
         if not ok:
-            failed.append("tamanho do pacote")
+            failed.append("bundle size")
 
     if "lighthouse" in head:
         bl = base.get("lighthouse", {})
@@ -336,29 +372,30 @@ def compare(a):
             prev = [bl[p][cat] for p in scores if cat in bl.get(p, {})]
             drop = any(bl[p][cat] - scores[p] > 5 for p in scores if cat in bl.get(p, {}))
             vs = "—" if not prev else arrow(worst - min(prev))
-            row(True, worst < 90 or drop, f"Lighthouse {label} (pior página)",
-                f"{bar(worst / 100)} {worst} `{worst_page}`", "mín 90 (só aviso)", vs)
+            row(True, worst < 90 or drop, "Lighthouse " + T(label) + " " + T("(worst page)"),
+                f"{bar(worst / 100)} {worst} `{worst_page}`", T("min 90 (warning only)"), vs)
 
     if "audit" in head:
         v, bv = head["audit"], base.get("audit")
         serious = v["critical"] + v["high"]
         ok = first or not bv or serious <= bv["critical"] + bv["high"]
         vs = "—" if not bv else arrow(serious - bv["critical"] - bv["high"], higher_is_better=False)
-        row(ok, sum(v.values()) > 0, "Dependências vulneráveis (npm audit)",
-            f"{v['critical']} crít, {v['high']} altas, {v['moderate']} médias, {v['low']} baixas",
-            "altas+críticas não subir", vs)
+        row(ok, sum(v.values()) > 0, T("Vulnerable dependencies (npm audit)"),
+            T("{c} critical, {h} high, {m} moderate, {l} low").format(
+                c=v["critical"], h=v["high"], m=v["moderate"], l=v["low"]),
+            T("high+critical do not go up"), vs)
         if not ok:
-            failed.append("dependências vulneráveis")
+            failed.append("vulnerable dependencies")
         pk = head.get("audit_packages") or {}
         if pk:
-            details += ["<details><summary>Pacotes vulneráveis</summary>", "", "| Pacote | Gravidade |", "|---|---|"]
+            details += [f"<details><summary>{T('Vulnerable packages')}</summary>", "", T("| Package | Severity |"), "|---|---|"]
             details += [f"| `{n}` | {s} |" for n, s in sorted(pk.items(), key=lambda x: SEVERITIES.index(x[1]) if x[1] in SEVERITIES else 9)]
             details += ["", "</details>", ""]
 
-    title = "## Saúde web (linha de base)" if first else "## Saúde web (contra a main)"
-    out = [title, "", "| | Item | Agora | Limite | vs main |", "|---|---|---|---|---|", *rows, ""]
+    title = T("## Web health (baseline)") if first else T("## Web health (against main)")
+    out = [title, "", T("| | Item | Now | Limit | vs main |"), "|---|---|---|---|---|", *rows, ""]
     if first:
-        out += ["Primeira medida: nada falha; daqui em diante vale \"não piorar\".", ""]
+        out += [T("First measure: nothing fails; from now on, \"do not get worse\"."), ""]
     out += details
     print("\n".join(out))
     if failed and not a.no_fail:
@@ -393,6 +430,7 @@ def main():
     k.add_argument("head")
     k.add_argument("--bundle-growth-pct", type=float, default=10.0)
     k.add_argument("--no-fail", action="store_true")
+    k.add_argument("--lang", choices=["en", "pt"], default="en", help="panel language")
     a = p.parse_args()
     return collect(a) if a.cmd == "collect" else compare(a)
 

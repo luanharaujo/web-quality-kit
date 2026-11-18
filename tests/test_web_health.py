@@ -48,7 +48,7 @@ def worse(change):
 def main():
     rc, out = compare(BASE, BASE)
     assert rc == 0, out
-    assert "🔴" not in out and "contra a main" in out, out
+    assert "🔴" not in out and "against main" in out, out
 
     # Each of these must fail.
     bad = {
@@ -56,7 +56,7 @@ def main():
             {"file": "b.js", "rule": "no-unused-vars", "line": 1, "text": "const x = 1", "level": "error"}),
         "new type error": lambda m: m["tsc"].append({"file": "src/a.ts", "rule": "TS2322", "line": 4, "text": "x"}),
         "new HTML error": lambda m: m["html"].append({"file": "index.html", "rule": "no-dup-id", "line": 9, "text": "x"}),
-        "new broken link": lambda m: m["links"].append({"file": "/", "rule": "404", "line": 0, "text": "/sumiu"}),
+        "new broken link": lambda m: m["links"].append({"file": "/", "rule": "404", "line": 0, "text": "/gone"}),
         "new axe rule": lambda m: m["axe"].append({"file": "/", "rule": "image-alt", "line": 0, "text": "", "value": 1}),
         "personal data": lambda m: m["data"].append({"file": "a.html", "rule": "cpf", "line": 2, "text": "h", "masked": "5**5"}),
         "bundle +20%": lambda m: m["bundle"].update(gzip_kb=120.0),
@@ -84,11 +84,13 @@ def main():
         rc, out = compare(BASE, worse(change))
         assert rc == 0, f"{name}: should not fail\n{out}"
     rc, out = compare(BASE, worse(ok["Lighthouse drop"]))
-    assert "🟡 | Lighthouse Desempenho" in out, out
+    assert "🟡 | Lighthouse Performance" in out, out
+    rc, out = compare(BASE, worse(ok["Lighthouse drop"]), "--lang", "pt")
+    assert "🟡 | Lighthouse Desempenho" in out and "contra a main" in out, out
 
     # First run: everything bad is shown, nothing fails.
     rc, out = compare(None, worse(lambda m: [f(m) for f in bad.values()]))
-    assert rc == 0 and "linha de base" in out, out
+    assert rc == 0 and "baseline" in out, out
 
     # A metric main did not have yet (new in the kit) is a baseline too.
     base = worse(lambda m: m.pop("html"))

@@ -16,7 +16,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Accessibility (axe) | the axe-core rules inside Lighthouse's accessibility audit | `lighthouse-paths` |
 | Bundle size | sum of `.js` and `.css`, gzip, with a limit | `bundle-dir`, `bundle-max-kb` |
 | Vulnerable dependencies | `npm audit` on each lockfile | `audit-dirs` |
-| Tests | the repository's own command; lines starting with `ok` / `FALHOU` are counted | `test-command` |
+| Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
 | Personal data and secrets | `scripts/data_guard.py`: CPF/CNPJ with valid check digits, mobile numbers, e-mails, data files, tokens. Values are never printed, only masked and hashed | `data-guard: "true"` (public repositories) |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
 
@@ -33,7 +33,7 @@ The numbers of the last green run on the default branch are the reference (artif
 
 Lighthouse scores move a few points between runs of the same code, so they only warn (🟡 below 90 or more than 5 points below main). The modern-web check only warns. The first run, and any check main did not have yet, is a baseline: it shows what is bad and never fails. `fail-on-worse: "false"` turns the whole step into a report.
 
-The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections.
+The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
 
 ## Use
 
@@ -84,6 +84,6 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/casos/site`). They run in `.github/workflows/check.yml`.
+`tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`). They run in `.github/workflows/check.yml`.
 
-The test cases in `tests/casos/` contain made-up personal data on purpose (the bad cases the guard must catch).
+The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).
