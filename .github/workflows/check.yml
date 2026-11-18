@@ -61,4 +61,7 @@ jobs:
           lighthouse-runs: "1"
           bundle-dir: tests/cases/site
           data-guard: "true"
+          # The test site is bad on purpose and changes with the tests: this job
+          # proves the action runs end to end, it does not gate the kit.
+          fail-on-worse: "false"
       - uses: ./actions/security
