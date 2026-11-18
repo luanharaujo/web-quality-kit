@@ -1,0 +1,7 @@
+# A local rule, so the proof does not depend on the Semgrep registry.
+rules:
+  - id: no-eval
+    languages: [javascript]
+    severity: ERROR
+    message: eval runs any text as code
+    pattern: eval(...)

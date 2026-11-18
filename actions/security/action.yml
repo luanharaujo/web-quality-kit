@@ -1,0 +1,68 @@
+# Security for any repository (web, Swift, anything in git): secrets with
+# gitleaks and code patterns with Semgrep CE, "never worse". In a pull request
+# only the new commits (secrets) and the findings that main does not have
+# (Semgrep --baseline-commit) fail the job; a push checks the pushed commits;
+# schedule and workflow_dispatch scan everything and only report.
+# Both tools are pinned and SHA-256 checked. Semgrep runs without a token: the
+# rules come from its public registry, no code is sent, metrics are off.
+#
+# Usage (after actions/checkout with fetch-depth: 0):
+#   - uses: luanharaujo/web-quality-kit/actions/security@v1.2.0
+name: Security
+description: Secrets (gitleaks) and code patterns (Semgrep CE), only new findings fail.
+
+inputs:
+  gitleaks-config:
+    description: gitleaks config file. Empty = .gitleaks.toml in the repository if present, else gitleaks' defaults.
+    default: ""
+  semgrep-config:
+    description: Semgrep rules (registry pack or file).
+    default: p/ci
+  semgrep-paths:
+    description: Folders Semgrep scans, space separated.
+    default: .
+
+runs:
+  using: composite
+  steps:
+    # The owner's own machine never runs code from a public repository.
+    - name: Runner check
+      shell: bash
+      env:
+        RUNNER_KIND: ${{ runner.environment }}
+        PRIVATE: ${{ github.event.repository.private }}
+      run: |
+        if [[ "$RUNNER_KIND" == "self-hosted" && "$PRIVATE" != "true" ]]; then
+          echo "::error::Public repository on a self-hosted runner: refused"; exit 1
+        fi
+
+    - name: Install gitleaks and Semgrep (pinned)
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+      run: |
+        bin="$("$KIT/scripts/install_security_tools.sh" "$RUNNER_TEMP/security-tools" | tail -1)"
+        echo "$bin" >> "$GITHUB_PATH"
+
+    - name: Scan
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        OUT: ${{ runner.temp }}/security
+        BASE: ${{ github.base_ref }}
+        BEFORE: ${{ github.event.before }}
+        AFTER: ${{ github.sha }}
+        GITLEAKS_CONFIG: ${{ inputs.gitleaks-config }}
+        SEMGREP_CONFIG: ${{ inputs.semgrep-config }}
+        SEMGREP_PATHS: ${{ inputs.semgrep-paths }}
+      run: |
+        if [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then git fetch -q --unshallow origin; fi
+        case "$GITHUB_EVENT_NAME" in
+          pull_request|pull_request_target) export MODE=pr; git fetch -q origin "$BASE" ;;
+          push) if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then export MODE=full; else export MODE=push RANGE="$BEFORE..$AFTER"; fi ;;
+          *) export MODE=full ;;
+        esac
+        rc=0
+        "$KIT/scripts/security_scan.sh" || rc=$?
+        cat "$OUT/security.md" >> "$GITHUB_STEP_SUMMARY"
+        exit $rc
