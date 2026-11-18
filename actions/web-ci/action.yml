@@ -1,0 +1,137 @@
+# Web health for one repository: lint, types, HTML, broken links, bundle size,
+# Lighthouse (with axe), npm audit, tests, personal data in a public repo and
+# the Baseline CSS check. Every check is optional (empty input = off). The
+# numbers are compared with the last green run on the default branch ("do not
+# get worse"); the first run is the baseline and never fails.
+#
+# The calling job needs `permissions: actions: read` (main's numbers) and Node
+# (actions/setup-node) before this step. It runs inside the caller's job.
+name: Web CI
+description: Web health checks with a panel and "do not get worse" against main.
+
+inputs:
+  lint-paths:
+    description: Paths for ESLint (space separated). Empty = off.
+    default: ""
+  eslint-config:
+    description: The repository's own ESLint flat config. Empty = the kit's.
+    default: ""
+  tsc-projects:
+    description: One tsconfig folder per line (tsc --noEmit). Its node_modules must be installed.
+    default: ""
+  html-globs:
+    description: HTML files for html-validate (space separated globs). Empty = off.
+    default: ""
+  site-dir:
+    description: Built static site, for broken links and Lighthouse. Empty = off.
+    default: ""
+  site-mount:
+    description: Serve site-dir under this path (an app built with base "/treinos/" → "/treinos").
+    default: ""
+  lighthouse-paths:
+    description: Pages for Lighthouse, space separated (e.g. "/ /treinos/"). Empty = off.
+    default: ""
+  lighthouse-categories:
+    description: Categories shown. A noindex page leaves out seo.
+    default: performance accessibility best-practices seo
+  lighthouse-runs:
+    description: Runs per page; the median is used.
+    default: "3"
+  bundle-dir:
+    description: Folder whose .js and .css are summed (gzip). Empty = off.
+    default: ""
+  bundle-max-kb:
+    description: Bundle limit in kB (gzip), warning only. 0 = no limit.
+    default: "0"
+  bundle-growth-pct:
+    description: Largest bundle growth against main, in percent.
+    default: "10"
+  audit-dirs:
+    description: Folders with a package-lock.json for npm audit. Empty = off.
+    default: ""
+  test-command:
+    description: Shell command that runs the tests. Lines starting with ok/FALHOU are counted.
+    default: ""
+  data-guard:
+    description: '"true" = personal data and secrets check (meant for public repositories).'
+    default: "false"
+  modern:
+    description: '"true" = Baseline CSS check (only warns).'
+    default: "true"
+  fail-on-worse:
+    description: '"false" = only report, never fail.'
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install the kit's tools
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../tools
+      run: npm ci --no-fund --no-audit --loglevel=error
+
+    - name: Run the checks
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        OUT: ${{ runner.temp }}/web-health
+        LINT_PATHS: ${{ inputs.lint-paths }}
+        ESLINT_CONFIG: ${{ inputs.eslint-config }}
+        TSC_PROJECTS: ${{ inputs.tsc-projects }}
+        HTML_GLOBS: ${{ inputs.html-globs }}
+        SITE_DIR: ${{ inputs.site-dir }}
+        SITE_MOUNT: ${{ inputs.site-mount }}
+        LH_PATHS: ${{ inputs.lighthouse-paths }}
+        LH_CATEGORIES: ${{ inputs.lighthouse-categories }}
+        LH_RUNS: ${{ inputs.lighthouse-runs }}
+        BUNDLE_DIR: ${{ inputs.bundle-dir }}
+        BUNDLE_MAX_KB: ${{ inputs.bundle-max-kb }}
+        AUDIT_DIRS: ${{ inputs.audit-dirs }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        DATA_GUARD: ${{ inputs.data-guard }}
+        MODERN: ${{ inputs.modern }}
+      run: '"$KIT/scripts/web_ci.sh"'
+
+    # "Do not get worse": compared with the last green run of this workflow on
+    # the default branch; there, the numbers are saved for the next pull requests.
+    - name: Health against main
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KIT: ${{ github.action_path }}/../..
+        OUT: ${{ runner.temp }}/web-health
+        WORKFLOW: ${{ github.workflow }}
+        MAIN: ${{ github.event.repository.default_branch }}
+        GROWTH: ${{ inputs.bundle-growth-pct }}
+        FAIL: ${{ inputs.fail-on-worse }}
+      run: |
+        flags=(--bundle-growth-pct "$GROWTH")
+        [[ "$FAIL" == "true" ]] || flags+=(--no-fail)
+        base="-"
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          # A failing API call must fail the step: "no numbers yet" would switch
+          # the comparison off without anyone noticing.
+          if ! ids=$(gh run list --workflow "$WORKFLOW" --branch "$MAIN" --status success --limit 10 \
+              --json databaseId -q '.[].databaseId'); then
+            echo "::error::Could not list the runs on $MAIN to compare health"
+            exit 1
+          fi
+          for id in $ids; do
+            if gh run download "$id" --name web-health --dir "$OUT/base" >/dev/null 2>&1; then
+              base="$OUT/base/health.json"; break
+            fi
+          done
+        fi
+        rc=0
+        python3 "$KIT/scripts/web_health.py" compare "$base" "$OUT/health.json" "${flags[@]}" \
+          > "$OUT/panel.md" || rc=$?
+        cat "$OUT/panel.md" >> "$GITHUB_STEP_SUMMARY"
+        exit $rc
+
+    - name: Save health numbers
+      if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-health
+        path: ${{ runner.temp }}/web-health/health.json
+        retention-days: 90
