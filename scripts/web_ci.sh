@@ -61,8 +61,12 @@ fi
 
 if [[ -n "${HTML_GLOBS:-}" ]]; then
   log "html-validate"
+  # The globs go to html-validate as written (set -f), so "site/**/*.html" also
+  # matches site/index.html, which bash without globstar would miss.
+  set -f
   # shellcheck disable=SC2086
   "$BIN/html-validate" --config "$KIT/tools/htmlvalidate.json" --formatter json $HTML_GLOBS > "$OUT/html.json"
+  set +f
   [[ -s "$OUT/html.json" ]] || echo "[]" > "$OUT/html.json"
   args+=(--html "$OUT/html.json")
   end
