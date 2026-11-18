@@ -37,7 +37,7 @@ runs:
   steps:
     - name: Get the published files (GitHub Pages artifact)
       if: inputs.pages-artifact == 'true'
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: github-pages
         path: ${{ runner.temp }}/pages-artifact
