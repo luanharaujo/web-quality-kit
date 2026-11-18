@@ -10,11 +10,11 @@
 #   GITLEAKS_CONFIG  config file; empty = .gitleaks.toml in the repo if present, else gitleaks' defaults
 #   SEMGREP_CONFIG   rules, default p/ci (Semgrep registry; no token, no code sent, metrics off)
 #   SEMGREP_PATHS    folders to scan, default .
-#   OUT              output folder; the Markdown panel goes to $OUT/security.md
+#   OUT              output folder (default: a new temporary one); the panel goes to $OUT/security.md
 # Exit 1 = a new secret or a new Semgrep finding (not in full mode).
 set -uo pipefail
 MODE="${MODE:-full}"
-OUT="${OUT:-$PWD/.security}"
+OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 export SEMGREP_ENABLE_VERSION_CHECK=0 SEMGREP_SEND_METRICS=off
 fail=0
@@ -25,8 +25,16 @@ echo "| | Check | Result |" >> "$md"
 echo "|---|---|---|" >> "$md"
 
 # --- secrets -------------------------------------------------------------
+# In a pull request the config comes from the base branch, never from the
+# pull request itself (an allowlist added there could hide what it adds).
 cfg=()
 if [[ -n "${GITLEAKS_CONFIG:-}" ]]; then cfg=(--config "$GITLEAKS_CONFIG")
+elif [[ "$MODE" == pr ]]; then
+  if git show "origin/${BASE:?}:.gitleaks.toml" > "$OUT/base.gitleaks.toml" 2>/dev/null; then
+    cfg=(--config "$OUT/base.gitleaks.toml")
+  else
+    printf '[extend]\nuseDefault = true\n' > "$OUT/base.gitleaks.toml"; cfg=(--config "$OUT/base.gitleaks.toml")
+  fi
 elif [[ -f .gitleaks.toml ]]; then cfg=(--config .gitleaks.toml); fi
 case "$MODE" in
   pr)   opts="origin/${BASE:?}..HEAD" ;;
@@ -50,7 +58,9 @@ fi
 
 # --- code patterns -------------------------------------------------------
 sargs=(scan --config "${SEMGREP_CONFIG:-p/ci}" --metrics=off --json --output "$OUT/semgrep.json" --quiet)
-[[ $MODE == pr ]] && sargs+=(--baseline-commit "$(git merge-base "origin/${BASE}" HEAD)")
+# In a pull request "# nosemgrep" comments do not count: one added there could
+# hide its own finding.
+[[ $MODE == pr ]] && sargs+=(--baseline-commit "$(git merge-base "origin/${BASE}" HEAD)" --disable-nosem)
 # shellcheck disable=SC2086
 semgrep "${sargs[@]}" ${SEMGREP_PATHS:-.} > "$OUT/semgrep.log" 2>&1
 src=$?

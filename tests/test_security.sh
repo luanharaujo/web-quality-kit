@@ -14,7 +14,7 @@ mkdir "$T/repo" && cd "$T/repo" && git init -q -b main && git config user.email 
 echo 'export const ok = 1' > app.js && git add . && git commit -qm base
 git clone -q --bare "$T/repo" "$T/origin.git" && git remote add origin "$T/origin.git" && git fetch -q origin
 
-run() { MODE=$1 BASE=main SEMGREP_CONFIG="$RULES" OUT="$T/out" bash "$SCAN" > "$T/run.log" 2>&1; }
+run() { rm -rf "$T/out"; MODE=$1 BASE=main SEMGREP_CONFIG="$RULES" OUT="$T/out" bash "$SCAN" > "$T/run.log" 2>&1; }
 
 # 1. a clean pull request passes
 git switch -qc clean && echo 'export const two = 2' >> app.js && git commit -qam clean
@@ -36,7 +36,21 @@ git switch -q main && git merge -q evil && git push -q origin main && git fetch 
 git switch -qc later && echo 'export const three = 3' >> app.js && git commit -qam later
 run pr || { cat "$T/run.log" "$T/out/security.md"; echo "old finding blocked a clean PR"; exit 1; }
 
-# 5. full mode reports and never fails
+# 5. a pull request cannot allowlist its own finding (base config, # nosemgrep ignored)
+git switch -q main && git switch -qc sneaky
+printf '[extend]\nuseDefault = true\n[allowlist]\npaths = ["cfg2.js"]\n' > .gitleaks.toml
+echo "const t = \"$token\"" > cfg2.js
+echo 'eval(location.search) // nosemgrep' >> app.js
+git add . && git commit -qm sneaky
+if run pr; then cat "$T/out/security.md"; echo "allowlist in the pull request hid its own finding"; exit 1; fi
+grep -q "github-pat" "$T/out/security.md" && grep -q "no-eval" "$T/out/security.md" || { cat "$T/out/security.md"; exit 1; }
+
+# 6. fail closed: a scanner that cannot run fails the job
+git switch -q later
+if GITLEAKS_CONFIG=/nonexistent/config.toml run pr; then echo "broken gitleaks passed"; exit 1; fi
+grep -q "gitleaks did not run" "$T/run.log" || { cat "$T/run.log"; exit 1; }
+
+# 7. full mode reports and never fails
 run full || { cat "$T/run.log"; echo "full mode failed"; exit 1; }
 grep -q "no-eval" "$T/out/security.md"
 echo "security: ok"

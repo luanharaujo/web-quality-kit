@@ -58,8 +58,12 @@ runs:
       run: |
         if [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then git fetch -q --unshallow origin; fi
         case "$GITHUB_EVENT_NAME" in
-          pull_request|pull_request_target) export MODE=pr; git fetch -q origin "$BASE" ;;
-          push) if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then export MODE=full; else export MODE=push RANGE="$BEFORE..$AFTER"; fi ;;
+          # Not pull_request_target: there HEAD is the base branch, not the pull request.
+          pull_request) export MODE=pr; git fetch -q origin "$BASE" ;;
+          # A new branch, or a force push whose old commit is gone: scan everything (report only).
+          push) if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                  export MODE=full
+                else export MODE=push RANGE="$BEFORE..$AFTER"; fi ;;
           *) export MODE=full ;;
         esac
         rc=0
