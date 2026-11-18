@@ -45,12 +45,23 @@ git add . && git commit -qm sneaky
 if run pr; then cat "$T/out/security.md"; echo "allowlist in the pull request hid its own finding"; exit 1; fi
 grep -q "github-pat" "$T/out/security.md" && grep -q "no-eval" "$T/out/security.md" || { cat "$T/out/security.md"; exit 1; }
 
-# 6. fail closed: a scanner that cannot run fails the job
+# 6. nor with .gitleaksignore, gitleaks:allow or .semgrepignore
+git switch -q main && git switch -qc sneaky2
+echo "const t = \"$token\" // gitleaks:allow" > cfg3.js
+git add . && git commit -qm sneaky2
+if run pr; then echo "gitleaks:allow hid a token"; exit 1; fi
+git switch -q main && git switch -qc sneaky3
+echo 'eval(window.name)' > hidden.js && echo 'hidden.js' > .semgrepignore
+git add . && git commit -qm sneaky3
+if run pr; then echo ".semgrepignore hid a finding"; exit 1; fi
+grep -q "semgrepignore" "$T/out/security.md" || { cat "$T/out/security.md"; exit 1; }
+
+# 7. fail closed: a scanner that cannot run fails the job
 git switch -q later
 if GITLEAKS_CONFIG=/nonexistent/config.toml run pr; then echo "broken gitleaks passed"; exit 1; fi
 grep -q "gitleaks did not run" "$T/run.log" || { cat "$T/run.log"; exit 1; }
 
-# 7. full mode reports and never fails
+# 8. full mode reports and never fails
 run full || { cat "$T/run.log"; echo "full mode failed"; exit 1; }
 grep -q "no-eval" "$T/out/security.md"
 echo "security: ok"
