@@ -1,5 +1,5 @@
 # Copy to .github/dependabot.yml and add one npm entry per folder with a
-# package-lock.json. A new version waits a few days (cooldown) so a bad release
+# package-lock.json (and each composite action folder to "directories"). A new version waits a few days (cooldown) so a bad release
 # is usually pulled before it arrives; security fixes do not wait. Minor and
 # patch updates come grouped; majors come one by one.
 version: 2
