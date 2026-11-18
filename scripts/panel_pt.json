@@ -1,7 +1,7 @@
 {
  "Tests": "Testes",
  "{p} pass, {f} fail": "{p} passam, {f} falham",
- "none fails; do not go down": "nenhum falha; não diminuir",
+ "none fails; never fewer": "nenhum falha; não diminuir",
  "Types (strict tsc)": "Tipos (tsc estrito)",
  "Valid HTML": "HTML válido",
  "Broken links": "Links quebrados",
@@ -25,11 +25,11 @@
  "min 90 (warning only)": "mín 90 (só aviso)",
  "Vulnerable dependencies (npm audit)": "Dependências vulneráveis (npm audit)",
  "{c} critical, {h} high, {m} moderate, {l} low": "{c} crít, {h} altas, {m} médias, {l} baixas",
- "high+critical do not go up": "altas+críticas não subir",
+ "high+critical never more": "altas+críticas não subir",
  "Vulnerable packages": "Pacotes vulneráveis",
  "| Package | Severity |": "| Pacote | Gravidade |",
  "## Web health (baseline)": "## Saúde web (linha de base)",
  "## Web health (against main)": "## Saúde web (contra a main)",
  "| | Item | Now | Limit | vs main |": "| | Item | Agora | Limite | vs main |",
- "First measure: nothing fails; from now on, \"do not get worse\".": "Primeira medida: nada falha; daqui em diante vale \"não piorar\"."
+ "First measure: nothing fails; from now on, \"never worse\".": "Primeira medida: nada falha; daqui em diante vale \"não piorar\"."
 }

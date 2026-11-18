@@ -12,7 +12,7 @@ Every metric is optional: the panel shows the ones that were collected.
 `compare` with base "-" (no numbers from main yet) is the baseline: it shows
 what is bad today and never fails.
 
-Against main, the job fails ("do not get worse") when:
+Against main, the job fails ("never worse") when:
   - a lint, type, HTML or accessibility case is NEW (a case = file + rule +
     the text of its line; cases that already existed only warn);
   - a broken link, a personal-data finding or a high/critical vulnerability
@@ -296,7 +296,7 @@ def compare(a):
         ok = first or (good and (not bt or t["passed"] >= bt["passed"]))
         vs = "—" if not bt else arrow(t["passed"] - bt["passed"])
         row(ok, not good, T("Tests"), T("{p} pass, {f} fail").format(p=t["passed"], f=t["failed"]),
-            T("none fails; do not go down"), vs)
+            T("none fails; never fewer"), vs)
         if not ok:
             failed.append("tests")
 
@@ -363,7 +363,7 @@ def compare(a):
         row(ok, sum(v.values()) > 0, T("Vulnerable dependencies (npm audit)"),
             T("{c} critical, {h} high, {m} moderate, {l} low").format(
                 c=v["critical"], h=v["high"], m=v["moderate"], l=v["low"]),
-            T("high+critical do not go up"), vs)
+            T("high+critical never more"), vs)
         if not ok:
             failed.append("vulnerable dependencies")
         pk = head.get("audit_packages") or {}
@@ -375,7 +375,7 @@ def compare(a):
     title = T("## Web health (baseline)") if first else T("## Web health (against main)")
     out = [title, "", T("| | Item | Now | Limit | vs main |"), "|---|---|---|---|---|", *rows, ""]
     if first:
-        out += [T("First measure: nothing fails; from now on, \"do not get worse\"."), ""]
+        out += [T("First measure: nothing fails; from now on, \"never worse\"."), ""]
     out += details
     print("\n".join(out))
     if failed and not a.no_fail:
