@@ -1,0 +1,17 @@
+# Copy to .github/dependabot.yml and list each folder with a package-lock.json.
+# Security updates arrive as pull requests; version updates once a week,
+# grouped, so they do not flood the review queue.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    groups:
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
