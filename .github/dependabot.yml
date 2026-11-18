@@ -1,0 +1,28 @@
+# The kit's pinned tools and actions. A new version waits a few days (cooldown)
+# so a bad release is usually pulled before it reaches here; security fixes do
+# not wait. Minor and patch updates come grouped; majors come one by one.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /tools
+    schedule:
+      interval: weekly
+    cooldown:
+      semver-major-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      tools:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        applies-to: version-updates
+        update-types: [minor, patch]
