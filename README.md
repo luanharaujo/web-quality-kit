@@ -92,6 +92,29 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
           paths: / /adm/versao.json /treinos/
 ```
 
+## Security (`actions/security`)
+
+Secrets with [gitleaks](https://github.com/gitleaks/gitleaks) and code patterns with [Semgrep CE](https://semgrep.dev), for any repository (web, Swift, anything in git), "never worse":
+
+- **Pull request:** gitleaks reads only the new commits; Semgrep reports only what main does not have (`--baseline-commit`). Anything found fails the job.
+- **Push:** gitleaks reads the pushed commits (fails on a find); Semgrep reports.
+- **Schedule / by hand:** both scan everything and only report.
+
+Both tools are pinned and SHA-256 checked (`scripts/install_security_tools.sh`). Semgrep runs without a token: rules come from its public registry (`p/ci` by default), no code is sent and metrics are off. A `.gitleaks.toml` at the repository root extends gitleaks' rules (or pass `gitleaks-config`). gitleaks redacts what it finds, so the run log never shows a secret. A public repository on a self-hosted runner is refused.
+
+```yaml
+  security:   # gitleaks + semgrep
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: luanharaujo/web-quality-kit/actions/security@v1.2.0
+```
+
+Proof: `tests/test_security.sh` builds a bait repository and checks that a planted token and an `eval()` fail a pull request, that the same findings already on main do not block a clean one, and that the token never appears in the output.
+
 ## Run it on a laptop
 
 ```sh

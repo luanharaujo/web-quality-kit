@@ -31,6 +31,10 @@ jobs:
           python3 tests/test_data_guard.py
           python3 tests/test_live_check.py
       # Every tool runs on a small bad site and each problem must show up.
+      - name: Security tools (pinned, SHA-256 checked)
+        run: echo "$(bash scripts/install_security_tools.sh "$RUNNER_TEMP/security-tools" | tail -1)" >> "$GITHUB_PATH"
+      - name: Security proof (bait repository)
+        run: bash tests/test_security.sh
       - name: Tool proofs (bad site caught)
         run: bash tests/test_collect.sh
 
@@ -57,3 +61,4 @@ jobs:
           lighthouse-runs: "1"
           bundle-dir: tests/casos/site
           data-guard: "true"
+      - uses: ./actions/security
