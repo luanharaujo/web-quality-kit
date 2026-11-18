@@ -58,8 +58,8 @@ def main():
     write(good, {
         "test.html": "<p>Invalid CPF " + "123.456.789-" + "00</p>\n"
                      "<p>Test number 55" + AREA + "9000" + "0001</p>\n"
-                     "<p>contact@example.com, 55" + AREA + "test-id</p>\n"
-                     "<p>Version 1.0.0.0-0 is not a CPF</p>\n",
+                     "<p>contact@example.com, 55" + AREA + "90000001" + "@" + "s.whatsapp.net</p>\n"
+                     "<p>Version 1." + "234.567.890" + "-12 is not a CPF</p>\n",
         "package.json": '{"name": "x"}\n',
     })
 
