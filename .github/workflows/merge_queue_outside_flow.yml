@@ -1,6 +1,6 @@
 # Detection only, never blocks. A pull request must be opened by the agents' GitHub App
 # (publicar_github pr). If the author is anyone else, label it "outside the flow" and leave
-# one short comment (Portuguese, for the owner and the agents). It has no secrets and never
+# one short comment (in English: this repository is public). It has no secrets and never
 # checks out PR code (pull_request_target runs main's copy of this file). A failure here only
 # shows as a red step in this workflow; it is not a required check and the queue ignores it.
 name: Outside the flow
