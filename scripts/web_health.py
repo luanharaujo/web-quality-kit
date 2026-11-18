@@ -247,31 +247,9 @@ def bar(fraction, width=10):
     return "`" + "▓" * full + "░" * (width - full) + "`"
 
 
-# Panel language: English by default, Portuguese with --lang pt.
-PT = {
-    "Tests": "Testes", "{p} pass, {f} fail": "{p} passam, {f} falham",
-    "none fails; do not go down": "nenhum falha; não diminuir",
-    "Types (strict tsc)": "Tipos (tsc estrito)", "Valid HTML": "HTML válido", "Broken links": "Links quebrados",
-    "Accessibility (axe)": "Acessibilidade (axe)",
-    "Personal data or secret in the repository": "Dado pessoal ou segredo no repositório",
-    "Modern web: old code with a native replacement (warning only)":
-        "Web moderna: código antigo com recurso nativo (só aviso)",
-    "{n} new": "{n} novos", "none new": "nenhum novo", "warning only": "só aviso", "new": "novos",
-    "existing": "existentes", "| Where | Rule | Detail |": "| Onde | Regra | Detalhe |", "{n} more": "mais {n}",
-    "grow up to {g}%": "crescer até {g}%", "max {m} kB": "máx {m} kB",
-    "Bundle size (JS+CSS, gzip)": "Tamanho do pacote (JS+CSS, gzip)",
-    "Performance": "Desempenho", "Accessibility": "Acessibilidade", "Best practices": "Boas práticas",
-    "(worst page)": "(pior página)", "min 90 (warning only)": "mín 90 (só aviso)",
-    "Vulnerable dependencies (npm audit)": "Dependências vulneráveis (npm audit)",
-    "{c} critical, {h} high, {m} moderate, {l} low": "{c} crít, {h} altas, {m} médias, {l} baixas",
-    "high+critical do not go up": "altas+críticas não subir", "Vulnerable packages": "Pacotes vulneráveis",
-    "| Package | Severity |": "| Pacote | Gravidade |",
-    "## Web health (baseline)": "## Saúde web (linha de base)",
-    "## Web health (against main)": "## Saúde web (contra a main)",
-    "| | Item | Now | Limit | vs main |": "| | Item | Agora | Limite | vs main |",
-    "First measure: nothing fails; from now on, \"do not get worse\".":
-        "Primeira medida: nada falha; daqui em diante vale \"não piorar\".",
-}
+# Panel language: English by default; --lang pt reads the Portuguese texts
+# from panel_pt.json (same keys as the English texts in this file).
+PT = {}
 LANG = "en"
 
 
@@ -299,8 +277,10 @@ WARN_ONLY = {"modern"}
 
 
 def compare(a):
-    global LANG
+    global LANG, PT
     LANG = a.lang
+    if LANG == "pt":
+        PT = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel_pt.json")))
     head = json.load(open(a.head))["metrics"]
     base = None if a.base == "-" else json.load(open(a.base))["metrics"]
     first = base is None
