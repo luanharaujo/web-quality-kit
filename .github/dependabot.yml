@@ -17,7 +17,8 @@ updates:
         update-types: [minor, patch]
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
-    directory: /
+    # Workflows and the composite action the repositories run.
+    directories: ["/", "/actions/web-ci"]
     schedule:
       interval: weekly
     cooldown:
