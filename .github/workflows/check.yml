@@ -54,11 +54,11 @@ jobs:
           node-version: 22
       - uses: ./actions/web-ci
         with:
-          lint-paths: tests/casos/site
-          html-globs: tests/casos/site/*.html
-          site-dir: tests/casos/site
+          lint-paths: tests/cases/site
+          html-globs: tests/cases/site/*.html
+          site-dir: tests/cases/site
           lighthouse-paths: /
           lighthouse-runs: "1"
-          bundle-dir: tests/casos/site
+          bundle-dir: tests/cases/site
           data-guard: "true"
       - uses: ./actions/security
