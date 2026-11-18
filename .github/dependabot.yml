@@ -5,6 +5,11 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /tools
+    ignore:
+      # typescript-eslint supports TypeScript below 6.1; TypeScript 7 (the
+      # native port) breaks the lint. Lift this when typescript-eslint does.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: weekly
     cooldown:
