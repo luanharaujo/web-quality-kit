@@ -7,7 +7,7 @@
 # rules come from its public registry, no code is sent, metrics are off.
 #
 # Usage (after actions/checkout with fetch-depth: 0):
-#   - uses: luanharaujo/web-quality-kit/actions/security@v1.2.0
+#   - uses: luanharaujo/web-quality-kit/actions/security@v1.2.1
 name: Security
 description: Secrets (gitleaks) and code patterns (Semgrep CE), only new findings fail.
 

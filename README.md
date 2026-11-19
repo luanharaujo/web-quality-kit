@@ -100,7 +100,7 @@ Secrets with [gitleaks](https://github.com/gitleaks/gitleaks) and code patterns 
 - **Push:** gitleaks reads the pushed commits (fails on a find); Semgrep reports.
 - **Schedule / by hand:** both scan everything and only report.
 
-Both tools are pinned and SHA-256 checked: the gitleaks release, and Semgrep with every dependency (`tools/semgrep-requirements.txt`, `pip --require-hashes`, wheels only). In a pull request, the gitleaks config and `.gitleaksignore` come from the base branch, `gitleaks:allow` and `# nosemgrep` comments are ignored, and a change to `.semgrepignore` fails the job for a person to review, so a pull request cannot allowlist its own finding. Semgrep runs without a token: rules come from its public registry (`p/ci` by default), no code is sent and metrics are off. A `.gitleaks.toml` at the repository root extends gitleaks' rules (or pass `gitleaks-config`). gitleaks redacts what it finds, so the run log never shows a secret. A public repository on a self-hosted runner is refused.
+Both tools are pinned and SHA-256 checked: the gitleaks release, and Semgrep with every dependency (`tools/semgrep-requirements.txt`, `pip --require-hashes`, wheels only). In a pull request, the gitleaks config and `.gitleaksignore` come from the base branch, `gitleaks:allow` and `# nosemgrep` comments are ignored, and a change to `.semgrepignore` fails the job for a person to review, so a pull request cannot allowlist its own finding. Semgrep runs without a token: rules come from its public registry (`p/ci` by default), no code is sent and metrics are off. A `.gitleaks.toml` at the repository root extends gitleaks' rules (or pass `gitleaks-config`). gitleaks redacts what it finds, so the run log never shows a secret. A public repository on a self-hosted runner is refused. Semgrep needs Python 3.10 to 3.14: the action looks on PATH, then in `/opt/homebrew/bin` and `/usr/local/bin` (a self-hosted runner started by launchd often has only `/usr/bin` on PATH, where macOS's Python is 3.9).
 
 ```yaml
   security:   # gitleaks + semgrep
@@ -110,7 +110,7 @@ Both tools are pinned and SHA-256 checked: the gitleaks release, and Semgrep wit
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: luanharaujo/web-quality-kit/actions/security@v1.2.0
+      - uses: luanharaujo/web-quality-kit/actions/security@v1.2.1
 ```
 
 Proof: `tests/test_security.sh` builds a bait repository and checks that a planted token and an `eval()` fail a pull request, that the same findings already on main do not block a clean one, and that the token never appears in the output.
