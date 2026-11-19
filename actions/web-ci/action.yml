@@ -109,6 +109,13 @@ runs:
         FAIL: ${{ inputs.fail-on-worse }}
         PANEL_LANG: ${{ inputs.lang }}
       run: |
+        # A self-hosted runner started by launchd may have only /usr/bin on
+        # PATH; gh usually lives in Homebrew's folder.
+        export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+        if ! command -v gh >/dev/null; then
+          echo "::error::gh (GitHub CLI) not found: it is needed to read main's health numbers"
+          exit 1
+        fi
         flags=(--bundle-growth-pct "$GROWTH" --lang "$PANEL_LANG")
         [[ "$FAIL" == "true" ]] || flags+=(--no-fail)
         base="-"
