@@ -115,6 +115,15 @@ Both tools are pinned and SHA-256 checked: the gitleaks release, and Semgrep wit
 
 Proof: `tests/test_security.sh` builds a bait repository and checks that a planted token and an `eval()` fail a pull request, that the same findings already on main do not block a clean one, and that the token never appears in the output.
 
+## Pull request description (`actions/pr-description`)
+
+Keeps the description of every pull request in the standard, without depending on anyone's memory:
+
+- **Body lint** (`scripts/pr_lint.py`, a copy of the central source, pinned by hash in the test): the three sections, a `<details>` technical block, and the language of the repository's visibility (Portuguese for a private repository, English for a public one). It reads only the event; nothing from the body is executed. Dependabot and the canary App are exempt.
+- **Sticky comment** `<!-- PR-VERIFICACOES -->`, one per pull request, created or edited on every push: *Checks* (what each check means, how strict it is, the real result), *Health* (the panel, with dots, bars and arrows against main) and *What each metric means* (a glossary, so a reader who did not design the system can trust the numbers). Texts are in `scripts/pr_texts.json` (pt and en); only text and emoji, for GitHub Mobile.
+
+Copy `templates/pr-description.yml`: event `pull_request` (never `pull_request_target`), `contents: read` + `pull-requests: write`, job `pr-descricao`. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. For the panel, make the job `needs:` the CI job: `web-ci` saves it as the `pr-panel` artifact (`panel-artifact` input; empty = off).
+
 ## Run it on a laptop
 
 ```sh
@@ -126,6 +135,6 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`). They run in `.github/workflows/check.yml`.
+`tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`). They run in `.github/workflows/check.yml`.
 
 The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).
