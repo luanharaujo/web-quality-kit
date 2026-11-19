@@ -41,8 +41,8 @@ runs:
       env:
         KIT: ${{ github.action_path }}/../..
       run: |
-        bin="$("$KIT/scripts/install_security_tools.sh" "$RUNNER_TEMP/security-tools" | tail -1)"
-        echo "$bin" >> "$GITHUB_PATH"
+        bin="$("$KIT/scripts/install_security_tools.sh" "$RUNNER_TEMP/security-tools")"
+        echo "${bin##*$'\n'}" >> "$GITHUB_PATH"
 
     - name: Scan
       shell: bash
