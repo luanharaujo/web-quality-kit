@@ -23,6 +23,12 @@ WEB = os.path.exists(os.path.join(S, "web_health.py"))
 fails = []
 
 
+def mkfile(suffix=""):
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    return path
+
+
 def check(name, ok, extra=""):
     print(("ok   " if ok else "FAIL ") + name + (" " + str(extra) if not ok and extra else ""))
     if not ok:
@@ -41,7 +47,7 @@ EN_BODY = "## What this PR does\nChanges the sign-in button from blue to green o
 
 def lint(body, private, user="someone"):
     ev = {"pull_request": {"body": body, "user": {"login": user}}, "repository": {"private": private}}
-    p = tempfile.mktemp(suffix=".json")
+    p = mkfile(suffix=".json")
     json.dump(ev, open(p, "w"))
     return subprocess.run([sys.executable, os.path.join(S, "pr_lint.py"), "--event", p], capture_output=True, text=True).returncode
 
@@ -77,7 +83,7 @@ if WEB:
                "bundle": {"kb": 50, "gzip_kb": 10.0, "largest": [], "max_kb": 0}}}
     BASE = {"kit": 1, "metrics": {"eslint": [], "tests": {"passed": 6, "failed": 0, "exit": 0},
             "bundle": {"kb": 50, "gzip_kb": 10.0, "largest": [], "max_kb": 0}}}
-    p, pb = tempfile.mktemp(suffix=".json"), tempfile.mktemp(suffix=".json")
+    p, pb = mkfile(suffix=".json"), mkfile(suffix=".json")
     json.dump(METRICS, open(p, "w")); json.dump(BASE, open(pb, "w"))
     panel_en = subprocess.run([sys.executable, os.path.join(S, "web_health.py"), "compare", pb, p], capture_output=True, text=True).stdout
     panel_pt = subprocess.run([sys.executable, os.path.join(S, "web_health.py"), "compare", pb, p, "--lang", "pt"], capture_output=True, text=True).stdout
@@ -147,7 +153,7 @@ url = f"http://127.0.0.1:{srv.server_port}"
 
 
 def event(fork=False):
-    p = tempfile.mktemp(suffix=".json")
+    p = mkfile(suffix=".json")
     json.dump({"pull_request": {"number": 3, "head": {"repo": {"full_name": "other/x" if fork else "o/x"}}},
                "repository": {"full_name": "o/x"}}, open(p, "w"))
     return p
