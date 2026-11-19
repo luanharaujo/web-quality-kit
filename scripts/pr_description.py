@@ -102,8 +102,8 @@ def post(event_path, body, token, apiurl="https://api.github.com"):
                   "requests get a read-only token; 5xx is GitHub's side.")
             return 0
         raise
-    except urllib.error.URLError as e:
-        print(f"::warning::Comment skipped: could not reach the GitHub API ({e.reason}).")
+    except OSError as e:
+        print(f"::warning::Comment skipped: could not reach the GitHub API ({e}).")
         return 0
     print("comment updated" if found else "comment created")
     return 0
