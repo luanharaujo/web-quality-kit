@@ -1,6 +1,6 @@
 # Detection only, never blocks. A pull request must be opened by the agents' GitHub App
 # (publicar_github pr). If the author is anyone else, label it "outside the flow" and leave
-# one short comment (in English: this repository is public). It has no secrets and never
+# one short comment (Portuguese, for the owner and the agents). It has no secrets and never
 # checks out PR code (pull_request_target runs main's copy of this file). A failure here only
 # shows as a red step in this workflow; it is not a required check and the queue ignores it.
 name: Outside the flow
@@ -37,4 +37,4 @@ jobs:
             exit 0
           fi
           gh pr comment "$PR" -R "$REPO" --body "<!-- outside-the-flow-marker -->
-          **Outside the flow.** This pull request was opened by \`$AUTHOR\`, not by the agents' App. So the author is the owner (who then cannot approve it), and the pull request has no requested reviewer and no registered owner for CI notices. **What to do:** close it and reopen the same branch through the agents' App. This notice only detects; it blocks nothing."
+          **Outside the flow.** This PR was opened by \`$AUTHOR\`, not by the agents' App. So the author is the repository owner (who then cannot approve it), and the PR has no requested reviewer and no registered owner for CI notices. **What to do:** close this PR and reopen the same branch with \`publicar_github pr\`. This notice only detects; it blocks nothing."
