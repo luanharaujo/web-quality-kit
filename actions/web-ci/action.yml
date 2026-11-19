@@ -28,6 +28,9 @@ inputs:
   site-mount:
     description: Serve site-dir under this path (an app built with base "/treinos/" → "/treinos").
     default: ""
+  links-skip-paths:
+    description: Site paths the broken-links check ignores (space separated, e.g. "/manifest.webmanifest"). For files that exist on the real site but outside site-dir, so the check's own server cannot serve them.
+    default: ""
   lighthouse-paths:
     description: Pages for Lighthouse, space separated (e.g. "/ /treinos/"). Empty = off.
     default: ""
@@ -84,6 +87,7 @@ runs:
         HTML_GLOBS: ${{ inputs.html-globs }}
         SITE_DIR: ${{ inputs.site-dir }}
         SITE_MOUNT: ${{ inputs.site-mount }}
+        LINKS_SKIP_PATHS: ${{ inputs.links-skip-paths }}
         LH_PATHS: ${{ inputs.lighthouse-paths }}
         LH_CATEGORIES: ${{ inputs.lighthouse-categories }}
         LH_RUNS: ${{ inputs.lighthouse-runs }}

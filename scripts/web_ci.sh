@@ -11,6 +11,9 @@
 #   SITE_DIR        static site root for broken links and Lighthouse
 #   LH_PATHS        pages for Lighthouse, space separated (e.g. "/ /treinos/")
 #   SITE_MOUNT      serve SITE_DIR under this path (an app built with base /treinos/)
+#   LINKS_SKIP_PATHS  site paths the broken-links check ignores (space separated, e.g.
+#                   "/manifest.webmanifest"): files that live outside SITE_DIR on the
+#                   real site, so this server cannot serve them. Exact path, any ?query
 #   LH_CATEGORIES   Lighthouse categories shown, default all four (a noindex page: drop seo)
 #   LH_RUNS         Lighthouse runs per page (median), default 3
 #   BUNDLE_DIR      folder whose .js/.css are summed; BUNDLE_MAX_KB its limit (gzip)
@@ -87,7 +90,16 @@ if [[ -n "${SITE_DIR:-}" ]]; then
   for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.1; done
   starts=()
   for p in ${LH_PATHS:-${SITE_MOUNT:-}/}; do starts+=("http://127.0.0.1:$port$p"); done
-  "$BIN/linkinator" "${starts[@]}" --recurse --format json --skip '^https?://(?!(localhost|127\.0\.0\.1)[:/])' \
+  skip='^https?://(?!(localhost|127\.0\.0\.1)[:/])'
+  if [[ -n "${LINKS_SKIP_PATHS:-}" ]]; then
+    alt=""
+    for p in $LINKS_SKIP_PATHS; do
+      [[ "$p" == /* ]] || { echo "::error::links-skip-paths: '$p' must start with /"; kill "$SERVER"; exit 1; }
+      alt+="${alt:+|}$(printf '%s' "$p" | sed 's/[][\.^$*+?(){}|/]/\\&/g')"
+    done
+    skip+="|^http://127\\.0\\.0\\.1:$port($alt)([?#].*)?\$"
+  fi
+  "$BIN/linkinator" "${starts[@]}" --recurse --format json --skip "$skip" \
     > "$OUT/links.json" 2> "$OUT/links.err"
   kill "$SERVER" 2>/dev/null
   python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$OUT/links.json" 2>/dev/null \

@@ -11,7 +11,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Lint, size and complexity | ESLint (`tools/eslint.config.mjs`: recommended + typescript-eslint + React hooks; complexity 15, function 120 lines, depth 4, 5 params, file 800 lines) | `lint-paths` |
 | Types | `tsc --noEmit` with the project's own tsconfig (strict) | `tsc-projects` |
 | Valid HTML | html-validate (`tools/htmlvalidate.json`) | `html-globs` |
-| Broken links | linkinator on the built site (only the site's own links) | `site-dir` |
+| Broken links | linkinator on the built site (only the site's own links) | `site-dir` (`links-skip-paths` for files that live outside it on the real site) |
 | Lighthouse: performance, accessibility, best practices, SEO | Lighthouse CI, median of 3 runs per page | `lighthouse-paths` |
 | Accessibility (axe) | the axe-core rules inside Lighthouse's accessibility audit | `lighthouse-paths` |
 | Bundle size | sum of `.js` and `.css`, gzip, with a limit | `bundle-dir`, `bundle-max-kb` |
