@@ -30,13 +30,19 @@ if [[ ! -x "$DEST/bin/semgrep" ]]; then
   # Semgrep and every dependency at an exact version, each file checked against
   # its SHA-256 (pip --require-hashes), wheels only: no install script runs.
   # Semgrep's wheels cover Python 3.10 to 3.14.
+  # A self-hosted runner started by launchd may have only /usr/bin on PATH
+  # (macOS's own python3 is 3.9), so the usual install folders are tried too.
+  # PYTHON (a path) wins when set.
   py=""
-  for c in python3.12 python3.13 python3.14 python3.11 python3.10 python3; do
-    if command -v "$c" >/dev/null && "$c" -c 'import sys; sys.exit(not (3, 10) <= sys.version_info[:2] <= (3, 14))'; then
+  for c in ${PYTHON:-} python3.12 python3.13 python3.14 python3.11 python3.10 python3 \
+      /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.14 \
+      /usr/local/bin/python3.12 /usr/local/bin/python3.13 /usr/local/bin/python3.14; do
+    if command -v "$c" >/dev/null && "$c" -c 'import sys; sys.exit(not (3, 10) <= sys.version_info[:2] <= (3, 14))' 2>/dev/null; then
       py="$c"; break
     fi
   done
-  [[ -n "$py" ]] || { echo "::error::Semgrep needs Python 3.10 to 3.14" >&2; exit 1; }
+  [[ -n "$py" ]] || { echo "::error::Semgrep needs Python 3.10 to 3.14 (none found on PATH, /opt/homebrew/bin or /usr/local/bin; set PYTHON)" >&2; exit 1; }
+  echo "Semgrep on $("$py" -c 'import sys; print(sys.executable, sys.version.split()[0])')" >&2
   "$py" -m venv "$DEST/semgrep-venv"
   "$DEST/semgrep-venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes \
     --only-binary :all: -r "$(dirname "$0")/../tools/semgrep-requirements.txt" >&2
