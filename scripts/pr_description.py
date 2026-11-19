@@ -70,7 +70,10 @@ def api(method, url, token, data=None):
         "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "quality-kit-pr-description"},
         data=json.dumps(data).encode() if data is not None else None)
-    with urllib.request.urlopen(req, timeout=30) as r:
+    if not url.startswith(("https://", "http://")):
+        raise ValueError("only http(s) URLs")  # urllib would also open file:// URLs
+    # The URL is the fixed API address plus the repository and number from the event file.
+    with urllib.request.urlopen(req, timeout=30) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         return json.load(r)
 
 
