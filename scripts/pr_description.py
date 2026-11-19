@@ -97,11 +97,14 @@ def post(event_path, body, token, apiurl="https://api.github.com"):
         else:
             api("POST", base, token, {"body": body})
     except urllib.error.HTTPError as e:
-        if e.code in (401, 403, 404):
-            print(f"::warning::Comment skipped: the token cannot write here (HTTP {e.code}). "
-                  "Dependabot and fork pull requests get a read-only token.")
+        if e.code in (401, 403, 404) or e.code >= 500:
+            print(f"::warning::Comment skipped (HTTP {e.code}). Dependabot and fork pull "
+                  "requests get a read-only token; 5xx is GitHub's side.")
             return 0
         raise
+    except urllib.error.URLError as e:
+        print(f"::warning::Comment skipped: could not reach the GitHub API ({e.reason}).")
+        return 0
     print("comment updated" if found else "comment created")
     return 0
 

@@ -151,6 +151,7 @@ runs:
     # The panel for the comment on the pull request (action pr-description).
     - name: Save the panel for the PR comment
       if: always() && github.event_name == 'pull_request' && inputs.panel-artifact != ''
+      continue-on-error: true  # a duplicate name (two runs of the action) must not fail the CI
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ inputs.panel-artifact }}
