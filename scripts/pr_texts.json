@@ -1,0 +1,378 @@
+{
+ "en": {
+  "checks": [
+   {
+    "match": [
+     "Tests"
+    ],
+    "name": "Tests",
+    "means": "The repository's own tests. A failing test, or fewer passing tests than main, is a regression.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Lint (ESLint)"
+    ],
+    "name": "Lint (ESLint)",
+    "means": "Code mistakes and code that is too big or too tangled (complexity, function and file size).",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Types"
+    ],
+    "name": "Types (strict tsc)",
+    "means": "The type checker finds values used the wrong way before the code runs.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Valid HTML"
+    ],
+    "name": "Valid HTML",
+    "means": "The page markup follows the HTML rules, so browsers and screen readers read it the same way.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Broken links"
+    ],
+    "name": "Broken links",
+    "means": "Links on the site that lead nowhere.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Accessibility (axe)"
+    ],
+    "name": "Accessibility (axe)",
+    "means": "Problems that make the page hard to use with a screen reader, keyboard or low vision (contrast, labels).",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Personal data"
+    ],
+    "name": "Personal data and secrets",
+    "means": "CPF, phone, e-mail or access keys committed by mistake. Only checked in public repositories.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Vulnerable dependencies"
+    ],
+    "name": "Vulnerable dependencies",
+    "means": "Libraries with a known security flaw (npm audit). A new high or critical one blocks.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Bundle size"
+    ],
+    "name": "Bundle size",
+    "means": "How much code the browser downloads. Blocks only when it grows more than the allowed percentage over main.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Lighthouse Performance"
+    ],
+    "name": "Lighthouse: performance",
+    "means": "How fast the page loads and responds (0 to 100).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse Accessibility"
+    ],
+    "name": "Lighthouse: accessibility",
+    "means": "Google's accessibility score for the page (0 to 100).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse Best practices"
+    ],
+    "name": "Lighthouse: best practices",
+    "means": "Safe and modern habits (HTTPS, no console errors).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse SEO"
+    ],
+    "name": "Lighthouse: SEO",
+    "means": "Whether search engines can read the page.",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Modern web"
+    ],
+    "name": "Modern web",
+    "means": "Old code that a native browser feature now does better.",
+    "rigor": "warns"
+   }
+  ],
+  "glossary": [
+   {
+    "term": "Never worse than main",
+    "text": "Every PR is compared with the last green run on the main branch. Problems that already existed only warn; a new one blocks the merge."
+   },
+   {
+    "term": "Blocks the merge / warns only",
+    "text": "Blocks: the required check turns red and the PR cannot be merged. Warns only: shown in the panel, never blocks."
+   },
+   {
+    "term": "Baseline",
+    "text": "The first measurement of a check on main. Nothing fails; from the next PR on, \"never worse\" applies."
+   },
+   {
+    "term": "Case",
+    "text": "One finding: file + rule + the text of the line. Moving a line does not make a case new."
+   },
+   {
+    "term": "Complexity",
+    "text": "How many paths a function can take. High means hard to read and easy to break."
+   },
+   {
+    "term": "Strict types",
+    "text": "The type checker in its strictest mode. It catches wrong data early."
+   },
+   {
+    "term": "axe",
+    "text": "The accessibility rule set used by Lighthouse. A serious or critical finding means some people cannot use the page."
+   },
+   {
+    "term": "Lighthouse score",
+    "text": "0 to 100 per category (median of runs). It moves a few points between runs of the same code, so it only warns: 90 or more is good."
+   },
+   {
+    "term": "Bundle (gzip)",
+    "text": "The JavaScript and CSS the browser downloads, compressed. Smaller loads faster."
+   },
+   {
+    "term": "npm audit",
+    "text": "Looks for known security flaws in the libraries the project uses."
+   },
+   {
+    "term": "Arrows",
+    "text": "↑ better than main, ↓ worse, = same."
+   },
+   {
+    "term": "Dots and bars",
+    "text": "🟢 fine, 🟡 warning, 🔴 blocks the merge. The bar shows how full the metric is."
+   }
+  ],
+  "ui": {
+   "checks": "Checks",
+   "health": "Health",
+   "glossary": "What each metric means",
+   "cols": "| | Check | What it means | Strictness | Result |",
+   "blocks": "blocks the merge",
+   "warns": "warns only",
+   "off": "Did not run in this PR",
+   "jobs": "CI jobs",
+   "warn": "warning",
+   "ok": "passed",
+   "bad": "failed",
+   "skip": "skipped",
+   "nopanel": "No panel in this run (the health job failed, was skipped, or main has no numbers yet).",
+   "foot": "Generated by CI and updated on every push. Do not edit by hand."
+  }
+ },
+ "pt": {
+  "checks": [
+   {
+    "match": [
+     "Testes",
+     "Tests"
+    ],
+    "name": "Testes",
+    "means": "Os testes do próprio repositório. Teste que falha, ou menos testes passando que na main, é regressão.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Lint (ESLint)"
+    ],
+    "name": "Lint (ESLint)",
+    "means": "Erros de código e código grande ou enrolado demais (complexidade, tamanho de função e de arquivo).",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Tipos",
+     "Types"
+    ],
+    "name": "Tipos (tsc estrito)",
+    "means": "O verificador de tipos acha valor usado do jeito errado antes de o código rodar.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "HTML válido",
+     "Valid HTML"
+    ],
+    "name": "HTML válido",
+    "means": "A página segue as regras do HTML, então navegador e leitor de tela entendem do mesmo jeito.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Links quebrados",
+     "Broken links"
+    ],
+    "name": "Links quebrados",
+    "means": "Links do site que não levam a lugar nenhum.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Acessibilidade (axe)",
+     "Accessibility (axe)"
+    ],
+    "name": "Acessibilidade (axe)",
+    "means": "Problemas que dificultam o uso com leitor de tela, teclado ou baixa visão (contraste, rótulos).",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Dado pessoal",
+     "Personal data"
+    ],
+    "name": "Dado pessoal e segredo",
+    "means": "CPF, telefone, e-mail ou chave de acesso enviados por engano. Só vale em repositório público.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Dependências vulneráveis",
+     "Vulnerable dependencies"
+    ],
+    "name": "Dependências vulneráveis",
+    "means": "Bibliotecas com falha de segurança conhecida (npm audit). Uma nova alta ou crítica bloqueia.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Tamanho do pacote",
+     "Bundle size"
+    ],
+    "name": "Tamanho do pacote",
+    "means": "Quanto código o navegador baixa. Só bloqueia se crescer mais que a porcentagem permitida sobre a main.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Lighthouse Desempenho",
+     "Lighthouse Performance"
+    ],
+    "name": "Lighthouse: desempenho",
+    "means": "Quão rápido a página carrega e responde (0 a 100).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse Acessibilidade",
+     "Lighthouse Accessibility"
+    ],
+    "name": "Lighthouse: acessibilidade",
+    "means": "Nota de acessibilidade do Google para a página (0 a 100).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse Boas práticas",
+     "Lighthouse Best practices"
+    ],
+    "name": "Lighthouse: boas práticas",
+    "means": "Hábitos seguros e modernos (HTTPS, sem erros no console).",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Lighthouse SEO"
+    ],
+    "name": "Lighthouse: SEO",
+    "means": "Se os buscadores conseguem ler a página.",
+    "rigor": "warns"
+   },
+   {
+    "match": [
+     "Web moderna",
+     "Modern web"
+    ],
+    "name": "Web moderna",
+    "means": "Código antigo que um recurso nativo do navegador faz melhor hoje.",
+    "rigor": "warns"
+   }
+  ],
+  "glossary": [
+   {
+    "term": "Nunca pior que a main",
+    "text": "Todo PR é comparado com a última execução verde da main. Problema que já existia só avisa; problema novo bloqueia o merge."
+   },
+   {
+    "term": "Bloqueia o merge / só avisa",
+    "text": "Bloqueia: a verificação obrigatória fica vermelha e o PR não pode ser juntado. Só avisa: aparece no painel e nunca bloqueia."
+   },
+   {
+    "term": "Linha de base",
+    "text": "A primeira medida de uma verificação na main. Nada falha; do próximo PR em diante vale \"nunca pior\"."
+   },
+   {
+    "term": "Caso",
+    "text": "Um achado: arquivo + regra + texto da linha. Mudar a linha de lugar não torna o caso novo."
+   },
+   {
+    "term": "Complexidade",
+    "text": "Quantos caminhos uma função pode seguir. Alta = difícil de ler e fácil de quebrar."
+   },
+   {
+    "term": "Tipos estritos",
+    "text": "O verificador de tipos no modo mais rígido. Pega dado errado cedo."
+   },
+   {
+    "term": "axe",
+    "text": "O conjunto de regras de acessibilidade do Lighthouse. Achado sério ou crítico = alguém não consegue usar a página."
+   },
+   {
+    "term": "Nota do Lighthouse",
+    "text": "0 a 100 por categoria (mediana das execuções). Varia alguns pontos no mesmo código, então só avisa: 90 ou mais é bom."
+   },
+   {
+    "term": "Pacote (gzip)",
+    "text": "O JavaScript e o CSS que o navegador baixa, comprimidos. Menor = carrega mais rápido."
+   },
+   {
+    "term": "npm audit",
+    "text": "Procura falhas de segurança conhecidas nas bibliotecas do projeto."
+   },
+   {
+    "term": "Setas",
+    "text": "↑ melhor que a main, ↓ pior, = igual."
+   },
+   {
+    "term": "Bolinhas e barras",
+    "text": "🟢 ok, 🟡 aviso, 🔴 bloqueia o merge. A barra mostra o quanto a métrica está cheia."
+   }
+  ],
+  "ui": {
+   "checks": "Verificações",
+   "health": "Saúde",
+   "glossary": "O que cada métrica significa",
+   "cols": "| | Verificação | O que significa | Rigor | Resultado |",
+   "blocks": "bloqueia o merge",
+   "warns": "só avisa",
+   "off": "Não rodaram neste PR",
+   "jobs": "Jobs do CI",
+   "warn": "atenção",
+   "ok": "passou",
+   "bad": "falhou",
+   "skip": "pulado",
+   "nopanel": "Sem painel nesta execução (o job de saúde falhou, foi pulado ou ainda não há números da main).",
+   "foot": "Comentário gerado pelo CI e atualizado a cada push. Não edite à mão."
+  }
+ }
+}

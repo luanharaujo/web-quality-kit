@@ -67,6 +67,12 @@ inputs:
   fail-on-worse:
     description: '"false" = only report, never fail.'
     default: "true"
+  panel-artifact:
+    description: >
+      Artifact name under which a pull request's health panel is saved for the
+      pr-description action (comment on the PR). Empty = not saved. One name per
+      workflow run: two web-ci jobs in a run need different names.
+    default: pr-panel
 
 runs:
   using: composite
@@ -145,6 +151,16 @@ runs:
           > "$OUT/panel.md" || rc=$?
         cat "$OUT/panel.md" >> "$GITHUB_STEP_SUMMARY"
         exit $rc
+
+    # The panel for the comment on the pull request (action pr-description).
+    - name: Save the panel for the PR comment
+      if: always() && github.event_name == 'pull_request' && inputs.panel-artifact != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.panel-artifact }}
+        path: ${{ runner.temp }}/web-health/panel.md
+        if-no-files-found: ignore
+        retention-days: 7
 
     - name: Save health numbers
       if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch

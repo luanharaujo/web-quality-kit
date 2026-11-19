@@ -1,0 +1,62 @@
+# The pull-request description, checked and explained by CI:
+#  - the body must follow the standard (sections, details block, language of the
+#    repository's visibility): scripts/pr_lint.py, which reads only the event;
+#  - the sticky comment <!-- PR-VERIFICACOES --> (checks, health panel, glossary)
+#    is created or updated on every push.
+# Nothing from the pull request body is executed. Meant for a job named
+# `pr-descricao` that runs on `pull_request` with `pull-requests: write` and
+# `contents: read` (see templates/pr-description.yml). Never `pull_request_target`.
+name: PR description
+description: Lint the pull-request body and keep the checks and health comment up to date.
+
+inputs:
+  lang:
+    description: '"pt", "en" or "auto" (pt for a private repository, en for a public one).'
+    default: auto
+  needs:
+    description: The job's `toJSON(needs)`, so the comment can list the CI jobs' results. Optional.
+    default: ""
+  panel-artifact:
+    description: Artifact (same run) that holds the health panel saved by the CI action.
+    default: pr-panel
+
+runs:
+  using: composite
+  steps:
+    - name: Health panel of this run
+      continue-on-error: true
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.panel-artifact }}
+        path: ${{ runner.temp }}/pr-panel
+
+    # Fork pull requests and Dependabot get a read-only token: the script skips
+    # the comment with a warning instead of failing.
+    - name: Checks and health comment
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        KIT: ${{ github.action_path }}/../..
+        LANG_IN: ${{ inputs.lang }}
+        NEEDS: ${{ inputs.needs }}
+        PRIVATE: ${{ github.event.repository.private }}
+        PANEL_DIR: ${{ runner.temp }}/pr-panel
+        OUT: ${{ runner.temp }}
+      run: |
+        lang="$LANG_IN"
+        if [[ "$lang" == "auto" ]]; then
+          [[ "$PRIVATE" == "true" ]] && lang=pt || lang=en
+        fi
+        needs=""
+        if [[ -n "$NEEDS" ]]; then printf '%s' "$NEEDS" > "$OUT/needs.json"; needs="$OUT/needs.json"; fi
+        panel="$(ls "$PANEL_DIR"/*.md 2>/dev/null | head -n 1 || true)"
+        python3 "$KIT/scripts/pr_description.py" build --lang "$lang" \
+          ${panel:+--panel "$panel"} ${needs:+--needs "$needs"} > "$OUT/pr-comment.md"
+        python3 "$KIT/scripts/pr_description.py" post --event "$GITHUB_EVENT_PATH" --body-file "$OUT/pr-comment.md"
+
+    # Last, so a body that fails the lint still gets its comment.
+    - name: Description standard (lint)
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+      run: python3 "$KIT/scripts/pr_lint.py" --event "$GITHUB_EVENT_PATH"

@@ -1,0 +1,31 @@
+# Copy to .github/workflows/pr-description.yml. Pin the action by commit SHA with
+# the version in a comment (never @v1), like the other kit actions.
+#
+# Make the job `needs:` the job that runs the CI action, so the comment can show
+# its health panel (the CI action saves it as the `pr-panel` artifact):
+#   needs: [web-health]        # your CI job; `if: always()` keeps the comment when it fails
+name: PR description
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-description-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-descricao:
+    # Dependabot code never runs on the owner's Mac.
+    runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    # needs: [CI_JOB]
+    if: always()
+    steps:
+      - uses: luanharaujo/web-quality-kit/actions/pr-description@SHA # vX.Y.Z
+        with:
+          needs: ${{ toJSON(needs) }}
