@@ -186,8 +186,8 @@ expect("mounted site: patterns with the mount match", not json.loads(r.stdout)["
 # Names that look like hashes but are not, and hashes without a digit.
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 import site_rules  # noqa: E402
-for name in ("fonts/Inter-SemiBold.woff2", "img/logo-whatsapp2.webp", "img/team-reuniao2025.webp",
-             "img/foto-DSC_01234.webp", "img/hero-1920x1080.webp", "favicon.svg"):
+for name in ("fonts/Inter-SemiBold.woff2", "img/logo-whatsapp2.webp", "img/team-meeting2025.webp",
+             "img/photo-DSC_01234.webp", "img/hero-1920x1080.webp", "favicon.svg"):
     expect(f"not hashed (outside a build folder): {name}", not site_rules.is_hashed(name, []), name)
 for name in ("_astro/index.DdKsxaZq.css", "assets/index-Bh-3x9aZ.js", "assets/index-BhK3_a-Z.js",
              "_next/static/chunks/main-abc.js", "app/_app/immutable/x.js"):
@@ -195,9 +195,11 @@ for name in ("_astro/index.DdKsxaZq.css", "assets/index-Bh-3x9aZ.js", "assets/in
 expect("hashed_extra adds files", site_rules.is_hashed("static/v2/app.js", [r"^static/v\d+/"]), "")
 expect("unhash: Vite hash with - and _", site_rules.unhash("assets/index-Bh-3x9aZ.js") == "assets/index.[hash].js"
        and site_rules.unhash("/assets/a-BhK3_a-Z.css?v=1") == "/assets/a.[hash].css?v=1", site_rules.unhash("assets/index-Bh-3x9aZ.js"))
+expect("unhash: Next.js long hex hash", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js")
+       == "_next/static/chunks/main.[hash].js", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js"))
 expect("unhash leaves other folders alone", site_rules.unhash("img/logo-whatsapp2.webp") == "img/logo-whatsapp2.webp", "")
 
-# CSS details the reviewer found.
+# CSS edge cases: comments, data: URIs, two src, line numbers.
 css = """/* @font-face { font-family: Gone; font-weight: 900; src: url(gone.ttf); } url(old.png) */
 @font-face { font-family: E; font-weight: 400; src: url("data:font/ttf;base64,AAAA") format("truetype"); }
 @font-face { font-family: T; font-weight: 400; src: url(/f/t.woff2); src: url(/f/t.ttf); }
