@@ -31,5 +31,19 @@
  "## Web health (baseline)": "## Saúde web (linha de base)",
  "## Web health (against main)": "## Saúde web (contra a main)",
  "| | Item | Now | Limit | vs main |": "| | Item | Agora | Limite | vs main |",
- "First measure: nothing fails; from now on, \"never worse\".": "Primeira medida: nada falha; daqui em diante vale \"não piorar\"."
+ "First measure: nothing fails; from now on, \"never worse\".": "Primeira medida: nada falha; daqui em diante vale \"não piorar\".",
+ "Performance budget: configuration": "Orçamento de desempenho: configuração",
+ "none": "nenhum",
+ "LCP (lab)": "LCP (laboratório)",
+ "CLS (lab)": "CLS (laboratório)",
+ "TBT (lab, stand-in for INP)": "TBT (laboratório, no lugar do INP)",
+ "Page weight (transferred)": "Peso da página (transferido)",
+ "JavaScript (transferred)": "JavaScript (transferido)",
+ "(exception)": "(exceção)",
+ "absolute": "absoluto",
+ "baseline (migrating)": "linha de base (migrando)",
+ "Performance budget per page": "Orçamento de desempenho por página",
+ "Page": "Página",
+ "Every page meets the budget: switch budget-mode to absolute.": "Todas as páginas cumprem o orçamento: troque budget-mode para absolute.",
+ "Lab numbers: phone on a slow network (Lighthouse mobile, Slow 4G, 4x CPU), median of the runs.": "Números de laboratório: celular em rede lenta (Lighthouse mobile, Slow 4G, CPU 4x), mediana das rodadas."
 }

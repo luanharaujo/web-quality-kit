@@ -28,6 +28,7 @@ jobs:
       - name: Script tests
         run: |
           python3 tests/test_web_health.py
+          python3 tests/test_budget.py
           python3 tests/test_data_guard.py
           python3 tests/test_live_check.py
           python3 tests/test_pr_description.py

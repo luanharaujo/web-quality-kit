@@ -40,6 +40,17 @@ inputs:
   lighthouse-runs:
     description: Runs per page; the median is used.
     default: "3"
+  budget-mode:
+    description: >
+      Performance budget on the Lighthouse pages (phone, slow network): lab LCP,
+      CLS, TBT, page and JS weight. "absolute" = any page over a limit fails (new
+      sites); "baseline" = a page over a limit fails only when it gets worse than
+      main (a site migrating to the budget). Empty = off. Needs site-dir and
+      lighthouse-paths.
+    default: ""
+  budget-file:
+    description: The repository's budget file (stricter limits and registered exceptions). Missing = the kit's defaults.
+    default: web-budget.json
   bundle-dir:
     description: Folder whose .js and .css are summed (gzip). Empty = off.
     default: ""
@@ -97,6 +108,8 @@ runs:
         LH_PATHS: ${{ inputs.lighthouse-paths }}
         LH_CATEGORIES: ${{ inputs.lighthouse-categories }}
         LH_RUNS: ${{ inputs.lighthouse-runs }}
+        BUDGET_MODE: ${{ inputs.budget-mode }}
+        BUDGET_FILE: ${{ inputs.budget-file }}
         BUNDLE_DIR: ${{ inputs.bundle-dir }}
         BUNDLE_MAX_KB: ${{ inputs.bundle-max-kb }}
         AUDIT_DIRS: ${{ inputs.audit-dirs }}

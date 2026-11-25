@@ -16,6 +16,9 @@
 #                   real site, so this server cannot serve them. Exact path, any ?query
 #   LH_CATEGORIES   Lighthouse categories shown, default all four (a noindex page: drop seo)
 #   LH_RUNS         Lighthouse runs per page (median), default 3
+#   BUDGET_MODE     "absolute" or "baseline" = performance budget on the Lighthouse
+#                   pages (scripts/budget.py); needs LH_PATHS. Empty = off
+#   BUDGET_FILE     the repository's web-budget.json (stricter limits, exceptions)
 #   BUNDLE_DIR      folder whose .js/.css are summed; BUNDLE_MAX_KB its limit (gzip)
 #   AUDIT_DIRS      folders with a package-lock.json for npm audit, space separated
 #   TEST_COMMAND    shell command that runs the tests (output parsed for ok/FALHOU)
@@ -108,16 +111,31 @@ if [[ -n "${SITE_DIR:-}" ]]; then
   end
 fi
 
+if [[ -n "${BUDGET_MODE:-}" ]]; then
+  [[ "$BUDGET_MODE" == "absolute" || "$BUDGET_MODE" == "baseline" ]] \
+    || { echo "::error::budget-mode must be absolute or baseline, not '$BUDGET_MODE'"; exit 1; }
+  [[ -n "${SITE_DIR:-}" && -n "${LH_PATHS:-}" ]] \
+    || { echo "::error::budget-mode needs site-dir and lighthouse-paths"; exit 1; }
+fi
+
 if [[ -n "${SITE_DIR:-}" && -n "${LH_PATHS:-}" ]]; then
   log "Lighthouse"
   rm -rf "$OUT/lhci" .lighthouseci
   urls=()
   for p in $LH_PATHS; do urls+=(--url="http://localhost$p"); done
   "$BIN/lhci" collect --staticDistDir="$SITE_DIR" "${urls[@]}" -n "${LH_RUNS:-3}" \
-    --settings.chromeFlags="--headless=new --no-sandbox" > "$OUT/lhci.log" 2>&1 \
+    --settings.chromeFlags="--headless=new --no-sandbox" \
+    --settings.formFactor=mobile --settings.throttlingMethod=simulate > "$OUT/lhci.log" 2>&1 \
     || { echo "::warning::Lighthouse did not finish"; tail -20 "$OUT/lhci.log"; }
   [[ -d .lighthouseci ]] && mv .lighthouseci "$OUT/lhci"
   args+=(--lhci "$OUT/lhci" --lh-categories "${LH_CATEGORIES:-performance accessibility best-practices seo}")
+  if [[ -n "${BUDGET_MODE:-}" ]]; then
+    # Pages as Lighthouse saw them (under SITE_MOUNT when the site is mounted).
+    python3 "$KIT/scripts/budget.py" check "$OUT/lhci" --mode "$BUDGET_MODE" \
+      --config "${BUDGET_FILE:-web-budget.json}" --pages "$LH_PATHS" > "$OUT/budget.json" \
+      || { echo "::error::budget.py did not run"; exit 1; }
+    args+=(--budget "$OUT/budget.json")
+  fi
   end
 fi
 

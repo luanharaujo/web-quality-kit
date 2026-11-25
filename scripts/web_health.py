@@ -21,6 +21,16 @@ Against main, the job fails ("never worse") when:
   - a test failed or the number of passing tests went down.
 Lighthouse scores move a few points between runs on the same code, so they
 only warn: 🟡 below 90, or more than 5 points below main.
+
+Performance budget (--budget, from budget.py: lab LCP, CLS, TBT, page and
+JS weight per page, phone on a slow network):
+  - an invalid web-budget.json (a looser limit with no exception, an expired
+    exception) or a page Lighthouse could not measure always fails;
+  - mode "absolute": any page over a limit fails, even on the first run and
+    with --no-fail (the budget is the rule, not a comparison);
+  - mode "baseline" (a site migrating to the budget): a page over a limit
+    fails only when it is new or worse than on main beyond the noise margin
+    (BUDGET_NOISE); the panel shows how far each page still is from the goal.
 """
 import argparse
 import glob
@@ -187,6 +197,7 @@ def test_counts(path, exit_code, pass_re, fail_re):
 
 
 def collect(a):
+    """Every metric the caller collected, in one JSON."""
     root = os.path.abspath(a.root)
     out = {"kit": 1, "metrics": {}}
     m = out["metrics"]
@@ -212,6 +223,8 @@ def collect(a):
                       "masked": f.get("masked", "")} for f in json.load(open(a.data))]
     if a.modern:
         m["modern"] = eslint_cases(a.modern, root)
+    if a.budget:
+        m["budget"] = json.load(open(a.budget))
     for item in a.legacy or []:
         prefix, path = item.split(":", 1) if ":" in item and not os.path.exists(item) else (".", item)
         m.setdefault("modern", []).extend(legacy_cases(path, prefix))
@@ -276,6 +289,97 @@ CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
 WARN_ONLY = {"modern"}
 
 
+# Lab numbers move a little between runs of the same code; in baseline mode a
+# page over its limit fails only when it got worse than main beyond this.
+BUDGET_NOISE = {"lcp_ms": (0.10, 100), "tbt_ms": (0.10, 50), "cls": (0, 0.01),
+                "page_kb": (0.02, 2), "js_kb": (0.02, 1)}
+BUDGET_LABELS = {"lcp_ms": "LCP (lab)", "cls": "CLS (lab)", "tbt_ms": "TBT (lab, stand-in for INP)",
+                 "page_kb": "Page weight (transferred)", "js_kb": "JavaScript (transferred)"}
+
+
+def fmt_budget(name, v):
+    if name == "cls":
+        return num(v, 3)
+    if name.endswith("_ms"):
+        return f"{num(v / 1000, 2)} s"
+    return f"{num(v, 0)} kB"
+
+
+def worse(name, now, before):
+    rel_tol, abs_tol = BUDGET_NOISE[name]
+    return now > before + max(before * rel_tol, abs_tol)
+
+
+def budget_rows(b, bb, first, row, details):
+    """Panel rows of the performance budget. Returns (hard, soft): hard fails
+    even with --no-fail (config errors; in absolute mode, any page over a
+    limit); soft is baseline mode's "worse than main", which --no-fail turns
+    off like the other comparisons."""
+    hard, soft = [], []
+    absolute = b.get("mode") == "absolute"
+    base_pages = (bb or {}).get("pages") or {}
+    if b.get("errors"):
+        row(False, True, T("Performance budget: configuration"), str(len(b["errors"])), T("none"), "—")
+        hard.append("budget configuration")
+        details += [f"<details open><summary>{T('Performance budget: configuration')}</summary>", ""]
+        details += [f"- {e}" for e in b["errors"]] + ["", "</details>", ""]
+    pages = b.get("pages") or {}
+    over_any = False
+    table = []
+    for name, label in BUDGET_LABELS.items():
+        vals = {p: r[name] for p, r in pages.items() if name in r}
+        if not vals:
+            continue
+        frac = {p: v["value"] / v["limit"] if v["limit"] else (0 if v["value"] == 0 else 9) for p, v in vals.items()}
+        worst_page = max(frac, key=frac.get)
+        w = vals[worst_page]
+        bad, regressed = [], []
+        for p, v in vals.items():
+            if v["value"] <= v["limit"]:
+                continue
+            bad.append(p)
+            prev = (base_pages.get(p) or {}).get(name)
+            if absolute or (prev is None and not first) or (prev is not None and worse(name, v["value"], prev["value"])):
+                regressed.append(p)
+        over_any |= bool(bad)
+        ok = not regressed
+        prevs = [base_pages[p][name]["value"] for p in vals if name in (base_pages.get(p) or {})]
+        if not prevs:
+            vs = "—"
+        elif name == "cls":
+            vs = arrow(w["value"] - max(prevs), 3, higher_is_better=False)
+        elif name.endswith("_ms"):
+            vs = arrow((w["value"] - max(prevs)) / 1000, 2, higher_is_better=False)
+        else:
+            vs = arrow(w["value"] - max(prevs), 0, higher_is_better=False)
+        lim = "≤ " + fmt_budget(name, w["limit"]) + (" " + T("(exception)") if w.get("exception") else "")
+        row(ok, bool(bad), T(label) + " " + T("(worst page)"),
+            f"{bar(min(frac[worst_page], 1))} {fmt_budget(name, w['value'])} `{worst_page}`", lim, vs)
+        if not ok:
+            (hard if absolute else soft).append(f"{T(label)}: {', '.join(regressed)}")
+    for p, r in pages.items():
+        cells = []
+        for name in BUDGET_LABELS:
+            if name in r:
+                v = r[name]
+                mark = "🔴" if v["value"] > v["limit"] else "🟢"
+                cells.append(f"{mark} {fmt_budget(name, v['value'])} / {fmt_budget(name, v['limit'])}")
+            else:
+                cells.append("—")
+        table.append(f"| `{p}` | " + " | ".join(cells) + " |")
+    if table:
+        mode = T("absolute") if absolute else T("baseline (migrating)")
+        details += [f"<details><summary>{T('Performance budget per page')}: {mode}</summary>", "",
+                    "| " + T("Page") + " | " + " | ".join(T(x) for x in BUDGET_LABELS.values()) + " |",
+                    "|---" * (len(BUDGET_LABELS) + 1) + "|", *table, ""]
+        if not absolute and not over_any and pages:
+            details.append(T("Every page meets the budget: switch budget-mode to absolute."))
+            details.append("")
+        details += [T("Lab numbers: phone on a slow network (Lighthouse mobile, Slow 4G, 4x CPU), median of the runs."),
+                    "", "</details>", ""]
+    return hard, soft
+
+
 def compare(a):
     global LANG, PT
     LANG = a.lang
@@ -285,7 +389,7 @@ def compare(a):
     base = None if a.base == "-" else json.load(open(a.base))["metrics"]
     first = base is None
     base = base or {}
-    rows, details, failed = [], [], []
+    rows, details, failed, hard_failed = [], [], [], []
 
     def row(ok, warn, item, now, limit, vs):
         rows.append(f"| {dot(ok, warn)} | {item} | {now} | {limit} | {vs} |")
@@ -355,6 +459,11 @@ def compare(a):
             row(True, worst < 90 or drop, "Lighthouse " + T(label) + " " + T("(worst page)"),
                 f"{bar(worst / 100)} {worst} `{worst_page}`", T("min 90 (warning only)"), vs)
 
+    if "budget" in head:
+        hard, soft = budget_rows(head["budget"], base.get("budget"), first, row, details)
+        failed += hard + soft
+        hard_failed += hard
+
     if "audit" in head:
         v, bv = head["audit"], base.get("audit")
         serious = v["critical"] + v["high"]
@@ -378,6 +487,9 @@ def compare(a):
         out += [T("First measure: nothing fails; from now on, \"never worse\"."), ""]
     out += details
     print("\n".join(out))
+    if hard_failed and a.no_fail:
+        print(f"::error::Performance budget: {', '.join(hard_failed)}", file=sys.stderr)
+        return 1
     if failed and not a.no_fail:
         print(f"::error::Health got worse than main: {', '.join(failed)}", file=sys.stderr)
         return 1
@@ -404,6 +516,7 @@ def main():
     c.add_argument("--fail-regex", default=r"^\s*(FALHOU|not ok|✗|✘|FAIL)\b")
     c.add_argument("--data")
     c.add_argument("--modern", help="ESLint JSON of the Baseline CSS check")
+    c.add_argument("--budget", help="budget.py check output")
     c.add_argument("--legacy", action="append", help="'dir:file' from modern-web-guidance legacy-scan --json")
     k = sub.add_parser("compare")
     k.add_argument("base")
