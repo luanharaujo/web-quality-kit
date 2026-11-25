@@ -5,19 +5,19 @@ uses the kit's query counter, templates/server/d1_queries.ts).
   server_queries.py check [--config server-queries.json] [--root .] > server_queries.json
 
 1. N+1: every list route is called with 3 rows and with 30 rows in the
-   database; the number of queries (header x-qld-queries) must be the same.
+   database; the number of queries (header x-db-queries) must be the same.
    Growing with the rows = red.
 2. Coverage: every GET route the scanner finds must have that test, or be
    exempt with a reason. Repository in mode "absolute" (new): a route without
    the test is red. Mode "baseline" (old repository migrating): routes listed
    in baseline.routes are tolerated; any other is red, and the list may not
    grow against main (web_health.py compare).
-3. Indexes: the SQL of every tested request (header x-qld-sql) goes through
+3. Indexes: the SQL of every tested request (header x-db-sql) goes through
    EXPLAIN QUERY PLAN on an in-memory SQLite with the repository's
    migrations. A full table scan where the query filters or joins, or an
    automatic index, means a missing index = red, unless the table is in
    exempt_tables (with a reason) or the query is in baseline.scans.
-4. Safety: the counter must be the kit's own copy, and QLD_QUERY_HEADER may
+4. Safety: the counter must be the kit's own copy, and DB_QUERY_HEADERS may
    never be set in a wrangler config (that would be production).
 
 The JSON written here is read by web_health.py (--server-queries).
@@ -34,7 +34,8 @@ Config (server-queries.json, paths relative to the repository root):
   routes          [{"route": "GET /x", "path": "/x?y=1"}] the tested lists
   exempt          {"GET /health": "reason"} GET routes that list nothing
   source          folders with the server code (route scanner and loop lint)
-  routes_command  optional, prints "METHOD /path" lines instead of the scanner
+  routes_command  prints "METHOD /path" lines; required until the kit ships the
+                  interaction check's scanner (scripts/interaction_gate.py)
   migrations      folder of .sql migrations (index check; empty = off)
   exempt_tables   {"plans": "reason"} small-by-nature tables
   baseline        {"routes": [...], "scans": [{"table": t, "sql": s}]}
@@ -58,7 +59,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(HERE)
 TEMPLATE = os.path.join(KIT, "templates", "server", "d1_queries.ts")
 SIZES = (3, 30)
-LEAK_VAR = "QLD_QUERY_HEADER"
+LEAK_VAR = "DB_QUERY_HEADERS"
 
 
 # --- routes ------------------------------------------------------------------
@@ -192,14 +193,14 @@ def measure(cfg, root, tmp, server, routes):
             except (urllib.error.URLError, OSError) as e:
                 errors.append(f"{r['route']} with {n} rows: {e}")
                 continue
-            value = h.get("x-qld-queries")
+            value = h.get("x-db-queries")
             if value is None:
-                errors.append(f"{r['route']}: no x-qld-queries header (is the handler wrapped by withQueryCount, "
-                              f"with QLD_QUERY_HEADER=1 in .dev.vars?)")
+                errors.append(f"{r['route']}: no x-db-queries header (is the handler wrapped by withQueryCount, "
+                              f"with DB_QUERY_HEADERS=1 in .dev.vars?)")
                 continue
             counts[r["route"]][n] = int(value)
-            if h.get("x-qld-sql"):
-                sql.update(json.loads(base64.b64decode(h["x-qld-sql"]).decode()))
+            if h.get("x-db-sql"):
+                sql.update(json.loads(base64.b64decode(h["x-db-sql"]).decode()))
     return counts, sorted(sql), errors
 
 
@@ -269,7 +270,7 @@ def same_file(a, b):
 
 
 def leaks(root):
-    """wrangler configs that set QLD_QUERY_HEADER (would reach production)."""
+    """wrangler configs that set DB_QUERY_HEADERS (would reach production)."""
     found = []
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", ".wrangler")]
@@ -316,7 +317,7 @@ def check(cfg, root):
 
     if not cfg.get("routes"):
         return out
-    tmp = tempfile.mkdtemp(prefix="qld-queries-")
+    tmp = tempfile.mkdtemp(prefix="db-queries-")
     server = None
     try:
         run(fill(cfg["seed"], n=SIZES[0], tmp=tmp), root, "seed")

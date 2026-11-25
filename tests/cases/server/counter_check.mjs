@@ -20,22 +20,22 @@ const handler = async (env) => {
   return new Response('ok', { headers: { 'x-app': '1' } })
 }
 const lines = []
-const env = { DB: db, QLD_QUERY_HEADER: '1' }
+const env = { DB: db, DB_QUERY_HEADERS: '1' }
 
 const prod = await withQueryCount(new Request('https://api.example.com/users/12345/orders'), env, handler, { log: (l) => lines.push(l) })
-check('production host never gets the headers, even with QLD_QUERY_HEADER=1', prod.headers.get('x-qld-queries') === null && prod.headers.get('x-qld-sql') === null)
+check('production host never gets the headers, even with DB_QUERY_HEADERS=1', prod.headers.get('x-db-queries') === null && prod.headers.get('x-db-sql') === null)
 check('the app response is untouched', (await prod.text()) === 'ok' && prod.headers.get('x-app') === '1')
 const log = JSON.parse(lines[0] || '{}')
 check('production log: event, route with :id, count', log.event === 'db_queries' && log.route === '/users/:id/orders' && log.queries === 4 && log.method === 'GET', lines[0])
 check('production log carries no SQL', !lines[0].includes('SELECT'), lines[0])
 
 const local = await withQueryCount(new Request('http://127.0.0.1:8932/x'), env, handler, { log: () => {} })
-check('localhost with the variable: count header (batch counts each statement)', local.headers.get('x-qld-queries') === '4', local.headers.get('x-qld-queries'))
-const sql = JSON.parse(Buffer.from(local.headers.get('x-qld-sql'), 'base64').toString())
+check('localhost with the variable: count header (batch counts each statement)', local.headers.get('x-db-queries') === '4', local.headers.get('x-db-queries'))
+const sql = JSON.parse(Buffer.from(local.headers.get('x-db-sql'), 'base64').toString())
 check('localhost: distinct SQL header', sql.length === 4 && sql.includes('SELECT v FROM t WHERE id = ?'), JSON.stringify(sql))
 
 const off = await withQueryCount(new Request('http://127.0.0.1:8932/x'), { DB: db }, handler, { log: () => {} })
-check('localhost without the variable: no header', off.headers.get('x-qld-queries') === null)
+check('localhost without the variable: no header', off.headers.get('x-db-queries') === null)
 
 let seen = null
 await withQueryCount(new Request('http://127.0.0.1/x'), env, handler, { log: () => {}, onQueries: (_, q) => { seen = q } })

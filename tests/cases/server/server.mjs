@@ -10,7 +10,7 @@ const wrap = args[0] !== '--no-header'
 if (!wrap) args.shift()
 const [variant, file, port] = args
 const { handle } = await import(`./handlers_${variant}.mjs`)
-const env = { DB: new FakeD1(file), QLD_QUERY_HEADER: '1' }
+const env = { DB: new FakeD1(file), DB_QUERY_HEADERS: '1' }
 
 http.createServer(async (inc, out) => {
   const req = new Request(`http://${inc.headers.host}${inc.url}`, { method: inc.method })

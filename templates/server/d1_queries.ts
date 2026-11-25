@@ -13,9 +13,9 @@
 //   database: {"event":"db_queries","method","route","status","queries","ms"}.
 //   The route is the path with ids replaced by :id (no personal data), and
 //   the SQL is never logged (it may carry inline values).
-// - Local tests: with QLD_QUERY_HEADER = "1" (in .dev.vars, never in
+// - Local tests: with DB_QUERY_HEADERS = "1" (in .dev.vars, never in
 //   wrangler.toml) and a request to localhost/127.0.0.1, the response also
-//   carries x-qld-queries: <count> and x-qld-sql: the distinct SQL texts of
+//   carries x-db-queries: <count> and x-db-sql: the distinct SQL texts of
 //   the request (base64 of a JSON list), for the kit's index check (EXPLAIN
 //   QUERY PLAN). Any other host never gets them, even with the variable set
 //   by mistake.
@@ -38,12 +38,12 @@ export interface QueryCountOptions {
   onQueries?: (req: Request, queries: QueryRecord[]) => void
 }
 
-export const QUERY_HEADER = 'x-qld-queries'
-export const SQL_HEADER = 'x-qld-sql'
+export const QUERY_HEADER = 'x-db-queries'
+export const SQL_HEADER = 'x-db-sql'
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 // Symbols the statement proxy answers, so batch() can unwrap it.
-const RAW = Symbol('qld.raw')
-const SQL = Symbol('qld.sql')
+const RAW = Symbol('db-queries.raw')
+const SQL = Symbol('db-queries.sql')
 
 // Wraps a D1Database (or a D1 session) so each statement it runs is recorded.
 // batch([...]) counts one query per statement: a batch of N lookups built in a
@@ -123,7 +123,7 @@ export function routeTemplate(path: string): string {
 }
 
 export function headerAllowed(req: Request, env: Record<string, unknown>): boolean {
-  if (env.QLD_QUERY_HEADER !== '1') return false
+  if (env.DB_QUERY_HEADERS !== '1') return false
   return LOCAL_HOSTS.has(new URL(req.url).hostname)
 }
 
