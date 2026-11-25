@@ -1,0 +1,9 @@
+{
+  "optimistic": [
+    { "route": "POST /api/likes", "reason": "a like may show before the server answers; a booking or a payment never" }
+  ],
+  "no_ui": [
+    { "route": "POST /webhooks/sync", "reason": "webhook, no screen: only the idempotency contract applies" }
+  ],
+  "exclude": []
+}

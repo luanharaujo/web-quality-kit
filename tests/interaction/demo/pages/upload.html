@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Upload demo</title>
+<style>
+  #zone { border: 2px dashed #888; padding: 24px; min-height: 60px; }
+  #zone.over { border-color: #0a7; background: #eefaf5; }
+</style></head>
+<body>
+<!-- ?v=good | bad -->
+<div id="zone" data-dropzone>
+  <span id="zone-text">Drop files here</span>
+  <input type="file" id="files" multiple aria-label="Files">
+</div>
+<p role="status" id="status"></p>
+<ul id="list"></ul>
+<script>
+const v = new URLSearchParams(location.search).get('v') || 'good';
+const zone = document.getElementById('zone');
+const list = document.getElementById('list');
+const status = document.getElementById('status');
+const fmt = (n) => n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
+
+if (v === 'good') {
+  zone.addEventListener('dragenter', () => { zone.classList.add('over'); document.getElementById('zone-text').textContent = 'Release to upload'; });
+  zone.addEventListener('dragleave', () => { zone.classList.remove('over'); document.getElementById('zone-text').textContent = 'Drop files here'; });
+}
+
+function sendOne(file, row) {
+  return new Promise((resolve) => {
+    const bar = row.querySelector('.bar');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/upload-${v}/uploads`);
+    if (bar && bar.tagName === 'PROGRESS') xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.value = Math.round(100 * e.loaded / e.total); };
+    xhr.onload = () => {
+      if (v === 'good') {
+        // proof of the right file: type and size (a thumbnail also counts)
+        row.replaceChildren(`${file.name} · ${file.type || 'file'} · ${fmt(file.size)}`);
+      } else {
+        row.textContent = file.name;
+      }
+      resolve(true);
+    };
+    xhr.onerror = () => {
+      if (v === 'good') {
+        row.querySelector('.msg').innerHTML = '<span role="alert">Failed.</span> <button type="button">Try again</button>';
+        row.querySelector('.msg button').onclick = () => { row.querySelector('.msg').textContent = ''; sendOne(file, row); };
+      }
+      resolve(false);
+    };
+    const data = new FormData();
+    data.append('file', file);
+    xhr.send(data);
+  });
+}
+
+document.getElementById('files').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  status.textContent = `Uploading ${files.length} file(s)...`;
+  const rows = files.map((file) => {
+    const li = document.createElement('li');
+    if (v === 'good') {
+      const bar = document.createElement('progress');
+      bar.className = 'bar';
+      bar.max = 100;
+      bar.value = 0;
+      bar.setAttribute('aria-label', file.name);
+      const msg = document.createElement('span');
+      msg.className = 'msg';
+      li.append(`${file.name} `, bar, ' ', msg);
+    } else {
+      const spinner = document.createElement('span');
+      spinner.className = 'bar';
+      spinner.setAttribute('role', 'progressbar');
+      spinner.setAttribute('aria-label', 'uploading');
+      li.append(spinner);
+    }
+    list.append(li);
+    return li;
+  });
+  if (v === 'good') {
+    await Promise.all(files.map((f, i) => sendOne(f, rows[i])));
+  } else {
+    for (let i = 0; i < files.length; i++) { if (!(await sendOne(files[i], rows[i]))) break; }
+  }
+});
+</script>
+</body>
+</html>

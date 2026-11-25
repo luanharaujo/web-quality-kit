@@ -174,6 +174,57 @@ Keeps the description of every pull request in the standard, without depending o
 
 Copy `templates/pr-description.yml`: event `pull_request` (never `pull_request_target`), `contents: read` + `pull-requests: write`, job `pr-descricao`. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. For the panel, make the job `needs:` the CI job: `web-ci` saves it as the `pr-panel` artifact (`panel-artifact` input; empty = off).
 
+## Interaction checks (`actions/interaction`)
+
+Every action that saves data (a click or a submit that sends POST, PUT,
+PATCH or DELETE) is checked in the repository's own Playwright tests, with no
+test written for it. The tests import from the kit instead of Playwright:
+
+```js
+import { test, expect } from 'web-quality-kit-interaction'; // was '@playwright/test'
+```
+
+The checks tap twice and cut the network on purpose: run them only against a
+test environment (local server and database), never production.
+
+The action links that package, runs the suite twice and checks each write
+route once per run:
+
+| Pass | Rule | Why |
+|---|---|---|
+| slow server (2 s) | within 400 ms of the tap the control is `disabled`/`aria-disabled` with `aria-busy`, or a `role=status`/`aria-live` region says what is happening | past 400 ms a still screen looks frozen and people tap again (Doherty threshold) |
+| slow server | a second tap right away reaches the server once, or both requests carry the same `Idempotency-Key` | a double tap must not book twice |
+| slow server | no success words ("booked", "paid", "saved"...) before the server answers, unless the route is listed in `optimistic` | someone else may have taken the slot |
+| failing network | an error in `role=alert` with a "try again" button; what the person typed or chose is still there; "try again" sends again | never make them start over |
+| uploads | a progress bar with a value (`role=progressbar` + `aria-valuenow`, or `<progress value>`), one per file; the drop zone reacts to `dragenter`; after the answer, a thumbnail or the file type and size; one failed file does not stop the others and keeps its own retry without choosing the file again | a spinner hides the truth; a file name is not proof |
+
+Server side, a contract test per write route:
+
+```js
+import { test, expectIdempotent } from 'web-quality-kit-interaction';
+test('booking is idempotent', async ({ request }) => {
+  await expectIdempotent(request, { url: '/api/bookings', data: { slot: 42 },
+    count: async () => (await (await request.get('/api/test/count?table=bookings')).json()).n });
+});
+```
+
+Nothing depends on remembering: the action lists the server's write routes
+(`server-dirs` scan: `app.post('/x')`, `route('POST', '/x')`,
+`method === 'POST' && path === '/x'`, Pages Functions `onRequestPost`; or the
+repository's `routes-command`) and every route needs an end-to-end pass
+through the checks and a passing contract. Write handlers the scan cannot
+name are counted too, so they cannot hide. `interaction.json` (template in
+`templates/`) holds the exceptions, each with a reason: `optimistic`,
+`no_ui` (webhooks: contract only) and `exclude`.
+
+`mode: new` (new repositories) makes any gap red. `mode: baseline`
+(existing ones) only fails when something gets
+worse than main. Resumable uploads (tus or multipart) are recommended for
+large files such as videos, not checked.
+
+Locally: `KIT_INTERACTION_ENFORCE=throw` (default) fails the test with the
+reason; `KIT_INTERACTION_MODE=fail` runs the failing-network pass.
+
 ## Run it on a laptop
 
 ```sh
@@ -186,5 +237,7 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 ## Kit's own tests
 
 `tests/test_site_rules.py` (a good built site has no case; a bad one has each cache, font and image problem caught by its own rule; exceptions hide only their files; absolute fails on any case, baseline on new ones), `tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
+
+Interaction: `tests/test_interaction.sh` runs a demo app (`tests/interaction/demo`) with one good page and one bad page per rule, in both passes, and checks that each bad page is caught by its own rule and the good pages pass; `tests/test_interaction_gate.py` proves the route scan, the coverage and new vs baseline (job `interaction`).
 
 The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).
