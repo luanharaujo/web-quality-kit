@@ -571,8 +571,9 @@ def compare(a):
         failed += hard + soft
         hard_failed += hard
 
+    db_hard = []
     if "server_queries" in head:
-        hard = server_rows(head["server_queries"], base.get("server_queries"), row, details)
+        hard = db_hard = server_rows(head["server_queries"], base.get("server_queries"), row, details)
         failed += hard
         hard_failed += hard
 
@@ -602,7 +603,13 @@ def compare(a):
     out += details
     print("\n".join(out))
     if hard_failed and a.no_fail:
-        print(f"::error::Rule broken: {', '.join(hard_failed)}", file=sys.stderr)
+        site = {dict(CASE_METRICS)[k] for k in SITE_RULES} | {"site rules configuration"}
+        groups = [("Performance budget", [x for x in hard_failed if x not in site and x not in db_hard]),
+                  ("Rule broken", [x for x in hard_failed if x in db_hard]),
+                  ("Site rules", [x for x in hard_failed if x in site])]
+        for name, broken in groups:
+            if broken:
+                print(f"::error::{name}: {', '.join(broken)}", file=sys.stderr)
         return 1
     if failed and not a.no_fail:
         print(f"::error::Health got worse than main: {', '.join(failed)}", file=sys.stderr)

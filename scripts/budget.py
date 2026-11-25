@@ -100,7 +100,12 @@ def load(path, today, mode="absolute"):
                                   "or set a new date")
             except ValueError:
                 errors.append("migration.until must be YYYY-MM-DD")
-    hashed = (cfg.get("cache") or {}).get("hashed_extra") or [] if isinstance(cfg.get("cache"), dict) else []
+    cache = cfg.get("cache") if isinstance(cfg.get("cache"), dict) else {}
+    hashed = cache.get("hashed_extra") or []
+    hashed_dirs = cache.get("hashed_dirs") or []
+    if not isinstance(hashed_dirs, list) or not all(isinstance(d, str) and d.endswith("/") for d in hashed_dirs):
+        errors.append("cache.hashed_dirs: a list of folders ending in /")
+        hashed_dirs = []
     good = []
     for pat in hashed if isinstance(hashed, list) else [None]:
         try:
@@ -108,7 +113,8 @@ def load(path, today, mode="absolute"):
             good.append(pat)
         except (re.error, TypeError):
             errors.append(f"cache.hashed_extra: {pat!r} is not a regular expression")
-    return {"limits": limits, "exceptions": exceptions, "errors": errors, "hashed": good}
+    return {"limits": limits, "exceptions": exceptions, "errors": errors, "hashed": good,
+            "hashed_dirs": [d.lstrip("/") for d in hashed_dirs]}
 
 
 def load_config(path, today):
