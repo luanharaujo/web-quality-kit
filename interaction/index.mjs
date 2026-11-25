@@ -32,6 +32,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WRITE_METHODS, routeKey, keyMatches } from './routes.mjs';
 import { settings, report } from './report.mjs';
+import { Reads } from './reads.mjs';
 
 export { expect };
 export { defineConfig, devices } from '@playwright/test';
@@ -52,6 +53,8 @@ export const DEFAULTS = {
   retry: '(retry|try again)',
   optimistic: [],
   exclude: [],
+  duplicate_reads_ok: [],
+  no_loading_state: [],
 };
 
 export function loadConfig() {
@@ -99,6 +102,11 @@ class Interaction {
     this.seen = []; // { key, at }
     this.pending = new Set();
     this.retry = new RegExp(this.cfg.retry, 'i');
+    this.reads = new Reads(this);
+  }
+
+  claim(kind, key) {
+    return claim(kind, key);
   }
 
   async install() {
@@ -106,6 +114,7 @@ class Interaction {
     const probeCfg = { success: this.cfg.success };
     await page.addInitScript({ content: `(${PROBE})(${JSON.stringify(probeCfg)})` });
     if (this.opts.mode === 'off') return;
+    await this.reads.install();
 
     const origRoute = page.route.bind(page);
     const origUnroute = page.unroute.bind(page);
@@ -123,9 +132,12 @@ class Interaction {
 
   wrap(handler) {
     return async (route, request) => {
-      if (!WRITE_METHODS.has(request.method()) || this.handled.has(request)) return handler(route, request);
+      if (this.handled.has(request)) return handler(route, request);
+      const read = Reads.isRead(request);
+      if (!read && !WRITE_METHODS.has(request.method())) return handler(route, request);
       this.handled.add(request);
-      const run = this.check(route, request, () => handler(route, request));
+      const proceed = () => handler(route, request);
+      const run = read ? this.reads.check(route, request, proceed) : this.check(route, request, proceed);
       this.pending.add(run);
       try { await run; } finally { this.pending.delete(run); }
     };
@@ -333,6 +345,8 @@ class Interaction {
   }
 
   async finish() {
+    await Promise.allSettled([...this.pending]);
+    if (this.opts.mode !== 'off') await this.reads.debounce();
     await Promise.allSettled([...this.pending]);
     if (!this.failures.length) return;
     for (const f of this.failures) this.testInfo.annotations.push({ type: 'kit-interaction', description: f });

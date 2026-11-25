@@ -102,10 +102,11 @@ class Collect(unittest.TestCase):
         self.assertEqual(cur["seen_undeclared"], ["POST /api/other"])
 
     def test_exception_needs_a_reason(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump({"exclude": [{"route": "POST /x"}]}, f)
-        with self.assertRaises(SystemExit):
-            g.load_config(f.name)
+        for field in ("exclude", "no_ui", "optimistic", "duplicate_reads_ok", "no_loading_state"):
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+                json.dump({field: [{"route": "POST /x"}]}, f)
+            with self.assertRaises(SystemExit, msg=field):
+                g.load_config(f.name)
 
 
 def health(**kw):

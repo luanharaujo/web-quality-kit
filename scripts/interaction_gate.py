@@ -168,7 +168,8 @@ def load_config(path: str | None) -> dict:
     cfg = {"no_ui": [], "exclude": []}
     if path and Path(path).is_file():
         cfg.update(json.loads(Path(path).read_text(encoding="utf-8")))
-    for field in ("no_ui", "exclude"):
+    for field in ("no_ui", "exclude", "optimistic", "duplicate_reads_ok", "no_loading_state"):
+        cfg.setdefault(field, [])
         for item in cfg[field]:
             if not isinstance(item, dict) or not item.get("route") or not str(item.get("reason", "")).strip():
                 raise SystemExit(f'interaction.json "{field}": each entry needs "route" and a "reason" ({item!r})')

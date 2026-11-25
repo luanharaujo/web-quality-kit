@@ -25,6 +25,13 @@ for (const v of ['good', 'bad']) {
   });
 }
 
+for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search']) {
+  test(`list ${v}`, async ({ page }) => {
+    await page.goto(`/list.html?v=${v}`);
+    await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+  });
+}
+
 const count = (request, page) => async () => (await (await request.get(`/api/test/count?page=${page}`)).json()).n;
 
 test('contract good', async ({ request }) => {

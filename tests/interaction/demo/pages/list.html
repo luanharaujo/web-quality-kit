@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>List demo</title></head>
+<body>
+<!-- ?v=list-good | list-dup | list-noload | list-search -->
+<label>Search <input type="search" id="q"></label>
+<section id="results" aria-label="Classes"></section>
+<p role="status" id="status"></p>
+<script>
+const v = new URLSearchParams(location.search).get('v') || 'list-good';
+const results = document.getElementById('results');
+const status = document.getElementById('status');
+const loading = (on) => {
+  if (v === 'list-noload') return;            // blank until the data arrives
+  results.setAttribute('aria-busy', String(on));
+  status.textContent = on ? 'Loading classes...' : '';
+};
+const show = (items) => { results.replaceChildren(...items.map((t) => Object.assign(document.createElement('p'), { textContent: t }))); };
+
+async function load() {
+  loading(true);
+  const r = await fetch(`/api/${v}/items`);
+  if (v === 'list-dup') await fetch(`/api/${v}/items`); // the same read again
+  show(await r.json());
+  loading(false);
+}
+
+let timer = null;
+async function search(q) {
+  loading(true);
+  const r = await fetch(`/api/${v}/search?q=${encodeURIComponent(q)}`);
+  show(await r.json());
+  loading(false);
+}
+document.getElementById('q').addEventListener('input', (e) => {
+  if (v === 'list-search') { search(e.target.value); return; } // a read per key
+  clearTimeout(timer);
+  timer = setTimeout(() => search(e.target.value), 300);
+});
+load();
+</script>
+</body>
+</html>

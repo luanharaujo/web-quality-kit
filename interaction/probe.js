@@ -97,6 +97,7 @@
     k.imgsBefore = document.images.length;
     k.fields = snapshotFields();
     watchBusy();
+    if (typeof window.__kitAction === 'function') window.__kitAction(); // new action for the read checks
   }
 
   document.addEventListener('pointerdown', (e) => activate(e.target), true);
@@ -137,6 +138,18 @@
     const newImage = document.images.length > k.imgsBefore ||
       [...document.images].some((i) => /^(blob|data):/.test(i.currentSrc || i.src));
     return { size, type, newImage };
+  };
+
+  // Something says "loading": aria-busy anywhere, or a visible status or
+  // progress bar (a skeleton should carry aria-busy on its region).
+  k.loading = () => {
+    if (document.querySelector('[aria-busy=true]')) return 'aria-busy';
+    for (const el of document.querySelectorAll('[role=status],[role=progressbar],progress')) {
+      if (!el.getClientRects().length) continue;
+      if (el.getAttribute('role') === 'status' && !el.textContent.trim()) continue;
+      return `${el.getAttribute('role') || 'progress'}: "${(el.textContent.trim() || el.getAttribute('aria-label') || '').slice(0, 40)}"`;
+    }
+    return '';
   };
 
   k.lostFields = () => k.fields
