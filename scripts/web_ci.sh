@@ -23,6 +23,10 @@
 #   AUDIT_DIRS      folders with a package-lock.json for npm audit, space separated
 #   TEST_COMMAND    shell command that runs the tests (output parsed for ok/FALHOU)
 #   DATA_GUARD      "true" = look for personal data and secrets (public repositories)
+#   SERVER_QUERIES  the repository's server-queries.json = database checks of the server
+#                   (scripts/server_queries.py: N+1 with 3 vs 30 rows, list routes
+#                   without that test, missing indexes) and the query-in-a-loop
+#                   lint (warning only) on its "source" folders. Empty = off
 #   MODERN          "true" = Baseline CSS check (@eslint/css use-baseline) and Modern Web
 #                   Guidance legacy-scan (old code with a native replacement), warning only
 set -uo pipefail
@@ -160,6 +164,21 @@ if [[ -n "${TEST_COMMAND:-}" ]]; then
   log "Tests"
   bash -c "$TEST_COMMAND" 2>&1 | tee "$OUT/tests.txt"
   args+=(--tests "$OUT/tests.txt" --tests-exit "${PIPESTATUS[0]}")
+  end
+fi
+
+if [[ -n "${SERVER_QUERIES:-}" ]]; then
+  log "Database (N+1, routes, indexes)"
+  python3 "$KIT/scripts/server_queries.py" check --config "$SERVER_QUERIES" --root "$PWD" > "$OUT/server_queries.json" \
+    || { echo "::error::server_queries.py did not run"; exit 1; }
+  args+=(--server-queries "$OUT/server_queries.json")
+  # shellcheck disable=SC2207
+  src=($(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("source", [])))' "$SERVER_QUERIES" 2>/dev/null))
+  if [[ ${#src[@]} -gt 0 ]]; then
+    node "$KIT/tools/query_in_loop.mjs" "$PWD" "${src[@]}" > "$OUT/query_loop.json" \
+      || { echo "::warning::query-in-loop lint failed"; echo '[]' > "$OUT/query_loop.json"; }
+    args+=(--query-loop "$OUT/query_loop.json")
+  fi
   end
 fi
 

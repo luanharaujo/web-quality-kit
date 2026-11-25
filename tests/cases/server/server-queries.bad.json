@@ -1,0 +1,29 @@
+{
+  "mode": "absolute",
+  "counter": "templates/server/d1_queries.ts",
+  "server": {
+    "start": "node tests/cases/server/server.mjs bad {tmp}/db.sqlite {port}",
+    "url": "http://127.0.0.1:{port}",
+    "ready": "/health"
+  },
+  "seed": "node tests/cases/server/seed.mjs {tmp}/db.sqlite tests/cases/server/migrations_bad {n}",
+  "routes_command": "printf 'GET /health\\nGET /orders\\nGET /customers\\nGET /products\\n'",
+  "routes": [
+    {
+      "route": "GET /orders"
+    },
+    {
+      "route": "GET /customers"
+    }
+  ],
+  "exempt": {
+    "GET /health": "no list, no database"
+  },
+  "migrations": "tests/cases/server/migrations_bad",
+  "source": [
+    "tests/cases/server/handlers_bad.mjs"
+  ],
+  "exempt_tables": {
+    "plans": "a handful of fixed rows"
+  }
+}

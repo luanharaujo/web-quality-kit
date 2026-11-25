@@ -66,6 +66,14 @@ inputs:
   test-command:
     description: Shell command that runs the tests. Lines starting with ok/FALHOU are counted.
     default: ""
+  server-queries:
+    description: >
+      The repository's server-queries.json: database checks of the server (each
+      list route with 3 and with 30 rows must make the same number of queries,
+      list routes without that test, missing indexes by EXPLAIN QUERY PLAN) and
+      a warning for queries inside a loop. The app wraps env.DB with the kit's
+      templates/server/d1_queries.ts. Empty = off.
+    default: ""
   data-guard:
     description: '"true" = personal data and secrets check (meant for public repositories).'
     default: "false"
@@ -115,6 +123,7 @@ runs:
         AUDIT_DIRS: ${{ inputs.audit-dirs }}
         TEST_COMMAND: ${{ inputs.test-command }}
         DATA_GUARD: ${{ inputs.data-guard }}
+        SERVER_QUERIES: ${{ inputs.server-queries }}
         MODERN: ${{ inputs.modern }}
       run: '"$KIT/scripts/web_ci.sh"'
 
