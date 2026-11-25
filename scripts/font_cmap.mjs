@@ -6,6 +6,8 @@
 //   node font_cmap.mjs a.woff2 b.woff2 > cmap.json
 import { readFileSync } from "node:fs";
 import { brotliDecompressSync } from "node:zlib";
+import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
 
 // WOFF2 known-table tags; the 6-bit index in each directory entry points here.
 const KNOWN = ["cmap", "head", "hhea", "hmtx", "maxp", "name", "OS/2", "post", "cvt ", "fpgm", "glyf", "loca",
@@ -86,7 +88,7 @@ export function codeRanges(cmap) {
   return ranges;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const out = {};
   for (const file of process.argv.slice(2)) {
     try {

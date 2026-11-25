@@ -508,6 +508,8 @@ def compare(a):
             for c in show[:60]:
                 where = f"{c['file']}:{c['line']}" if c.get("line") else c["file"]
                 text = c.get("masked") if name == "data" else c["text"]
+                if c.get("detail"):
+                    text = f"{text} ({c['detail']})" if text else c["detail"]
                 text = (text or "").replace("|", "\\|")[:90]
                 details.append(f"| `{where}` | {c['rule']} | {text} |")
             if len(show) > 60:

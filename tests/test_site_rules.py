@@ -142,16 +142,16 @@ write(f"{bad}/_astro/b.Df34Gh56.webp", webp(800, 600))
 out = run(bad)
 found = rules_of(out)
 want = {
-    ("cache-hashed", "_astro/index.Ab12Cd34.css"),
+    ("cache-hashed", "_astro/index.[hash].css"),
     ("cache-html", "about/index.html"),
     ("font-cdn", "cdn.html"),
-    ("font-cdn", "_astro/extra.Zx12Cv34.css"),
-    ("font-format", "_astro/extra.Zx12Cv34.css"),
+    ("font-cdn", "_astro/extra.[hash].css"),
+    ("font-format", "_astro/extra.[hash].css"),
     ("font-format", "f/many-400.woff"),
-    ("font-weights", "_astro/extra.Zx12Cv34.css"),
+    ("font-weights", "_astro/extra.[hash].css"),
     ("font-subset", "f/many-300.woff2"),
     ("img-format", "cdn.html"),
-    ("img-format", "_astro/extra.Zx12Cv34.css"),
+    ("img-format", "_astro/extra.[hash].css"),
     ("img-alt", "cdn.html"),
     ("img-size", "cdn.html"),
     ("img-lazy", "cdn.html"),
@@ -174,7 +174,7 @@ expect("no _headers file is a case", ("cache-headers-file", "_headers") in rules
 # Cloudflare detach ("! Cache-Control") drops a long cache set by an earlier rule.
 det = good_site()
 write(f"{det}/_headers", GOOD_HEADERS + "/_astro/index.Ab12Cd34.css\n  ! Cache-Control\n")
-expect("detached Cache-Control is caught", ("cache-hashed", "_astro/index.Ab12Cd34.css") in rules_of(run(det)), "")
+expect("detached Cache-Control is caught", ("cache-hashed", "_astro/index.[hash].css") in rules_of(run(det)), "")
 
 # A site served under a path: _headers patterns carry the mount.
 mnt = good_site()
@@ -185,7 +185,7 @@ expect("mounted site: patterns with the mount match", not json.loads(r.stdout)["
 
 # --- limits and exceptions ------------------------------------------------------
 strict = run(good_site(), config={"limits": {"img_px": 1000, "font_weights": 1}})
-expect("stricter img_px catches a 1200 px image", ("img-px", "_astro/hero.Qw12Er34.webp") in rules_of(strict), rules_of(strict))
+expect("stricter img_px catches a 1200 px image", ("img-px", "_astro/hero.[hash].webp") in rules_of(strict), rules_of(strict))
 expect("stricter font_weights catches two weights", any(c["rule"] == "font-weights" for c in strict["fonts"]), strict["fonts"])
 exc = {"rule": "img-px", "files": ["a.png"], "reason": "a print poster kept at full size",
        "approved_by": "owner", "date": "2026-11-20"}
@@ -236,6 +236,26 @@ write(f"{bad}/new.png", png(10, 10))
 write(f"{bad}/index.html", GOOD_HTML.replace("photo.Ty56Ui78.webp", "photo.png"))
 rc, panel = compare(metrics(old), metrics(run(bad, mode="baseline", config=mig)))
 expect("baseline: a new case fails", rc == 1, panel)
+# Stable identity: a heavier image, a new build hash or an image added above
+# do not turn old cases into new ones.
+churn = good_site()
+write(f"{churn}/_headers", "/*\n  X: y\n")
+write(f"{churn}/x.webp", webp(800, 600) + os.urandom(350 * 1024))
+CHURN_HTML = GOOD_HTML.replace('fetchpriority="high"', 'loading="lazy"').replace(
+    'alt="A photo" style="aspect-ratio: 4 / 3" loading="lazy"', 'alt="A photo" style="aspect-ratio: 4 / 3"')
+write(f"{churn}/index.html", CHURN_HTML)
+before = run(churn, mode="baseline", config=mig)
+os.rename(f"{churn}/_astro/index.Ab12Cd34.css", f"{churn}/_astro/index.Zz99Yy88.css")
+write(f"{churn}/x.webp", webp(800, 600) + os.urandom(380 * 1024))
+write(f"{churn}/index.html", CHURN_HTML.replace("<img src=\"/_astro/logo", "<img src=\"/_astro/new.Mm11Nn22.svg\" alt=\"\" width=\"1\" height=\"1\"><img src=\"/_astro/logo"))
+write(f"{churn}/_astro/new.Mm11Nn22.svg", "<svg xmlns='http://www.w3.org/2000/svg'/>")
+after = run(churn, mode="baseline", config=mig)
+expect("churn: the cases are still there", ("img-kb", "x.webp") in rules_of(after)
+       and ("cache-hashed", "_astro/index.[hash].css") in rules_of(after), sorted(rules_of(after)))
+new_svg = {("cache-hashed", "_astro/new.[hash].svg")}
+rc, panel = compare(metrics(before), dict(metrics(after), cache=[c for c in after["cache"] if (c["rule"], c["file"]) not in new_svg]))
+expect("baseline: heavier image, new build hash, image added above = no new case", rc == 0, panel)
+
 cfg_bad = run(good_site(), config={"limits": {"img_kb": 900}})
 rc, panel = compare(None, metrics(cfg_bad), "--no-fail")
 expect("configuration error fails in any mode", rc == 1, panel)

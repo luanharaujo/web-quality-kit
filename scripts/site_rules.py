@@ -59,6 +59,21 @@ FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net", "p
 URL_RE = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)")
 
 
+def hash_seg(seg):
+    return len(seg) >= 8 and re.fullmatch(r"[A-Za-z0-9_]+", seg) and bool(
+        re.search(r"\d", seg) and re.search(r"[A-Za-z]", seg)
+        or re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg))
+
+
+HASH_IN_NAME = re.compile(r"(?<=[.-])([A-Za-z0-9_]{8,})(?=\.[A-Za-z0-9]+(?:[?#\s'\")]|$))")
+
+
+def unhash(text):
+    """The same file across builds: a build hash in a name becomes [hash], so
+    "never worse" compares cases, not hashes."""
+    return HASH_IN_NAME.sub(lambda m: "[hash]" if hash_seg(m.group(1)) else m.group(1), text)
+
+
 def is_hashed(rel, extra):
     """A build-tool content hash in the name: Vite/Astro style name-Ab12Cd34.ext
     or name.Ab12Cd34.ext (8+ chars with a digit, or mixed case)."""
@@ -67,12 +82,7 @@ def is_hashed(rel, extra):
     if any(re.search(p, rel) for p in extra):
         return True
     stem = os.path.basename(rel).rsplit(".", 1)[0]
-    for seg in re.split(r"[.-]", stem)[1:]:
-        if len(seg) >= 8 and re.fullmatch(r"[A-Za-z0-9_]+", seg) and (
-                re.search(r"\d", seg) and re.search(r"[A-Za-z]", seg)
-                or re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg)):
-            return True
-    return False
+    return any(hash_seg(seg) for seg in re.split(r"[.-]", stem)[1:])
 
 
 # --- cache ---------------------------------------------------------------------
@@ -145,14 +155,14 @@ def cache_cases(site, files, headers, extra_hashed, mount=""):
             cc = cache_control(url, rules)
             age = max_age(cc)
             if "immutable" in cc.lower() or (age is not None and age > HTML_MAX_AGE):
-                out.append(case(rel, "cache-html", 0, f"{url}: Cache-Control '{cc}' (HTML: max-age <= {HTML_MAX_AGE})"))
+                out.append(case(rel, "cache-html", 0, "", f"{url}: Cache-Control '{cc}' (HTML: max-age <= {HTML_MAX_AGE})"))
         elif is_hashed(rel, extra_hashed):
             url = mount + "/" + rel.replace(os.sep, "/")
             cc = cache_control(url, rules)
             age = max_age(cc) or 0
             if age < YEAR or "immutable" not in cc.lower():
-                out.append(case(rel, "cache-hashed", 0,
-                                f"{url}: Cache-Control '{cc or 'none'}' (needs max-age={YEAR}, immutable)"))
+                out.append(case(rel, "cache-hashed", 0, "",
+                                f"Cache-Control '{cc or 'none'}' (needs max-age={YEAR}, immutable)"))
     return out
 
 
@@ -262,7 +272,7 @@ def html_cases(rel, text, eager, faces):
                 if u and not u.startswith("data:") and path_of(u).lower().endswith(RASTER):
                     out.append(case(rel, "img-format", line, u))
             if n_img > eager and a.get("loading", "").lower() != "lazy":
-                out.append(case(rel, "img-lazy", line, f"image {n_img} on the page: {src}"))
+                out.append(case(rel, "img-lazy", line, src, f"image {n_img} on the page"))
         elif tag == "source":
             for u in srcset_urls(a.get("srcset", "")):
                 if not u.startswith("data:") and path_of(u).lower().endswith(RASTER):
@@ -360,25 +370,37 @@ def font_subset_cases(site, fonts):
     if not fonts:
         return []
     here = os.path.dirname(os.path.abspath(__file__))
-    r = subprocess.run(["node", os.path.join(here, "font_cmap.mjs"), *[os.path.join(site, f) for f in fonts]],
-                       capture_output=True, text=True)
+    try:
+        r = subprocess.run(["node", os.path.join(here, "font_cmap.mjs"), *[os.path.join(site, f) for f in fonts]],
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        return [case(f, "font-subset", 0, "could not read the font", "node not found: the WOFF2 reader needs Node")
+                for f in fonts]
     if r.returncode != 0:
-        return [case(f, "font-subset", 0, "could not read the font: " + r.stderr.strip()[:120]) for f in fonts]
-    data = json.loads(r.stdout or "{}")
+        return [case(f, "font-subset", 0, "could not read the font", r.stderr.strip()[:120]) for f in fonts]
+    try:
+        data = json.loads(r.stdout)
+    except ValueError:
+        data = {}
+    if not data:
+        return [case(f, "font-subset", 0, "could not read the font", "the WOFF2 reader gave no output") for f in fonts]
     out = []
     for f in fonts:
         info = data.get(os.path.join(site, f), {})
         if "error" in info:
-            out.append(case(f, "font-subset", 0, "could not read the font: " + info["error"]))
+            out.append(case(f, "font-subset", 0, "could not read the font", info["error"]))
             continue
         count, names = outside_latin(info.get("ranges", []))
         if count:
-            out.append(case(f, "font-subset", 0, f"{count} characters outside Latin ({', '.join(names)})"))
+            out.append(case(f, "font-subset", 0, "outside Latin: " + ", ".join(names), f"{count} characters"))
     return out
 
 
-def case(file, rule, line, text):
-    return {"file": file, "rule": rule, "line": line, "text": str(text)[:200]}
+def case(file, rule, line, text, detail=""):
+    """A case; file + rule + text is its identity against main, so the text
+    holds no number that moves on its own (sizes, counts, positions go in
+    detail)."""
+    return {"file": file, "rule": rule, "line": line, "text": str(text)[:200], "detail": str(detail)[:200]}
 
 
 GROUP = {"cache": "cache", "font": "fonts", "img": "images"}
@@ -410,11 +432,11 @@ def check(a):
             kb = os.path.getsize(full) / 1024
             lim_kb, _ = budget.limit_for("img_kb", rel, limits, exceptions)
             if kb > lim_kb:
-                cases.append(case(rel, "img-kb", 0, f"{kb:.0f} KB (limit {lim_kb:g} KB)"))
+                cases.append(case(rel, "img-kb", 0, "", f"{kb:.0f} KB (limit {lim_kb:g} KB)"))
             size = None if low.endswith(".svg") else image_size(full)
             lim_px, _ = budget.limit_for("img_px", rel, limits, exceptions)
             if size and max(size) > lim_px:
-                cases.append(case(rel, "img-px", 0, f"{size[0]}x{size[1]} px (limit {lim_px:g} px)"))
+                cases.append(case(rel, "img-px", 0, "", f"{size[0]}x{size[1]} px (limit {lim_px:g} px)"))
     weights = {}
     for fam, weight, rel, line in faces:
         weights.setdefault(fam, {}).setdefault(weight, (rel, line))
@@ -422,11 +444,12 @@ def check(a):
         lim, _ = budget.limit_for("font_weights", fam, limits, exceptions)
         if len(ws) > lim:
             rel, line = sorted(ws.values())[0]
-            cases.append(case(rel, "font-weights", line, f"{fam}: {len(ws)} weights ({', '.join(sorted(ws))}); limit {lim:g}"))
+            cases.append(case(rel, "font-weights", line, fam, f"{len(ws)} weights ({', '.join(sorted(ws))}); limit {lim:g}"))
     cases += font_subset_cases(site, [f for f in files if f.lower().endswith(".woff2")])
     out = {"mode": a.mode, "errors": errors, "cache": [], "fonts": [], "images": [], "excepted": []}
     for c in cases:
         exc = budget.rule_exception(c["rule"], c["file"], exceptions)
+        c = dict(c, file=unhash(c["file"]), text=unhash(c["text"]))
         if exc:
             out["excepted"].append(dict(c, reason=exc["reason"]))
         else:
