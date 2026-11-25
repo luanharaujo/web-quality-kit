@@ -49,8 +49,18 @@ inputs:
       lighthouse-paths.
     default: ""
   budget-file:
-    description: The repository's budget file (stricter limits and registered exceptions). Missing = the kit's defaults.
+    description: The repository's budget file (stricter limits, registered exceptions, migration plan). Missing = the kit's defaults.
     default: web-budget.json
+  site-rules:
+    description: >
+      Static rules on the built site (site-dir): cache headers in _headers, fonts
+      (self-hosted WOFF2, Latin subset, at most 2 weights) and images (alt, size,
+      WebP/AVIF, lazy, 1600 px / 300 KB). "absolute" = any case fails; "baseline" =
+      a new case fails. Empty = off.
+    default: ""
+  headers-file:
+    description: The _headers file the site publishes. Empty = site-dir/_headers.
+    default: ""
   bundle-dir:
     description: Folder whose .js and .css are summed (gzip). Empty = off.
     default: ""
@@ -118,6 +128,8 @@ runs:
         LH_RUNS: ${{ inputs.lighthouse-runs }}
         BUDGET_MODE: ${{ inputs.budget-mode }}
         BUDGET_FILE: ${{ inputs.budget-file }}
+        SITE_RULES: ${{ inputs.site-rules }}
+        HEADERS_FILE: ${{ inputs.headers-file }}
         BUNDLE_DIR: ${{ inputs.bundle-dir }}
         BUNDLE_MAX_KB: ${{ inputs.bundle-max-kb }}
         AUDIT_DIRS: ${{ inputs.audit-dirs }}

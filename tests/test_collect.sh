@@ -81,3 +81,20 @@ if OUT="$(mktemp -d)" SITE_DIR=. BUDGET_MODE=absolute bash "$HERE/../scripts/web
   echo "budget-mode without lighthouse-paths should fail"; exit 1
 fi
 echo "budget needs lighthouse-paths: ok"
+
+# Site rules through web_ci.sh: the bad test site has a PNG and no _headers.
+OUT5="$(mktemp -d)"
+(cd "$HERE/cases/site" && OUT="$OUT5" SITE_DIR=. SITE_RULES=absolute BUDGET_FILE=/nonexistent \
+  bash "$HERE/../scripts/web_ci.sh" > "$OUT5/log.txt" 2>&1) || { cat "$OUT5/log.txt"; exit 1; }
+python3 - "$OUT5/health.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))["metrics"]
+assert m["site_rules"]["mode"] == "absolute", m.get("site_rules")
+assert any(c["rule"] == "cache-headers-file" for c in m["cache"]), m["cache"]
+assert any(c["rule"] == "img-format" and c["text"].endswith("foto.png") for c in m["images"]), m["images"]
+print("site rules through web_ci.sh: ok")
+PY
+if python3 "$HERE/../scripts/web_health.py" compare - "$OUT5/health.json" --no-fail > /dev/null; then
+  echo "absolute site rules did not fail the bad site"; exit 1
+fi
+echo "site rules fail the bad site: ok"

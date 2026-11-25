@@ -240,6 +240,11 @@ def collect(a):
         m["server_queries"] = json.load(open(a.server_queries))
     if a.query_loop:
         m["query_loop"] = json.load(open(a.query_loop))
+    if a.site_rules:
+        r = json.load(open(a.site_rules))
+        m["site_rules"] = {"mode": r["mode"], "errors": r["errors"], "excepted": len(r.get("excepted", []))}
+        for k in SITE_RULES:
+            m[k] = r[k]
     for item in a.legacy or []:
         prefix, path = item.split(":", 1) if ":" in item and not os.path.exists(item) else (".", item)
         m.setdefault("modern", []).extend(legacy_cases(path, prefix))
@@ -301,7 +306,9 @@ CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
                 ("html", "Valid HTML"), ("links", "Broken links"), ("axe", "Accessibility (axe)"),
                 ("data", "Personal data or secret in the repository"),
                 ("modern", "Modern web: old code with a native replacement (warning only)"),
-                ("query_loop", "Database query inside a loop (warning only)")]
+                ("query_loop", "Database query inside a loop (warning only)"),
+                ("cache", "Cache headers"), ("fonts", "Fonts"), ("images", "Images")]
+SITE_RULES = ("cache", "fonts", "images")
 WARN_ONLY = {"modern", "query_loop"}
 SERVER_LABELS = {"config": "Database check: configuration",
                  "n1": "Database queries per list (3 vs 30 rows)",
@@ -535,6 +542,28 @@ def compare(a):
             row(True, worst < 90 or drop, "Lighthouse " + T(label) + " " + T("(worst page)"),
                 f"{bar(worst / 100)} {worst} `{worst_page}`", T("min 90 (warning only)"), vs)
 
+    if "site_rules" in head:
+        sr = head["site_rules"]
+        if sr.get("errors"):
+            row(False, True, T("Site rules: configuration"), str(len(sr["errors"])), T("none"), "—")
+            hard_failed.append("site rules configuration")
+            failed.append("site rules configuration")
+            details += [f"<details open><summary>{T('Site rules: configuration')}</summary>", ""]
+            details += [f"- {e}" for e in sr["errors"]] + ["", "</details>", ""]
+        if sr.get("mode") == "absolute":
+            for k in SITE_RULES:
+                if head.get(k):
+                    label = dict(CASE_METRICS)[k]
+                    hard_failed.append(label)
+                    if label not in failed:
+                        failed.append(label)
+                    # Absolute: any case fails, so the row is red and the limit is "none".
+                    rows[:] = [r.replace("| 🟡 |", "| 🔴 |", 1).replace(f"| {T('none new')} |", f"| {T('none')} |")
+                               if f"| {T(label)} |" in r else r for r in rows]
+        if sr.get("excepted"):
+            details += [T("Site rules: {n} cases covered by registered exceptions (web-budget.json).").format(
+                n=sr["excepted"]), ""]
+
     if "budget" in head:
         hard, soft = budget_rows(head["budget"], base.get("budget"), first, row, details)
         failed += hard + soft
@@ -602,6 +631,7 @@ def main():
     c.add_argument("--budget", help="budget.py check output")
     c.add_argument("--server-queries", help="server_queries.py check output")
     c.add_argument("--query-loop", help="tools/query_in_loop.mjs output (cases)")
+    c.add_argument("--site-rules", help="site_rules.py check output")
     c.add_argument("--legacy", action="append", help="'dir:file' from modern-web-guidance legacy-scan --json")
     k = sub.add_parser("compare")
     k.add_argument("base")

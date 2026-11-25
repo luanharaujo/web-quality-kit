@@ -19,6 +19,9 @@
 #   BUDGET_MODE     "absolute" or "baseline" = performance budget on the Lighthouse
 #                   pages (scripts/budget.py); needs LH_PATHS. Empty = off
 #   BUDGET_FILE     the repository's web-budget.json (stricter limits, exceptions)
+#   SITE_RULES      "absolute" or "baseline" = static rules on SITE_DIR (scripts/site_rules.py):
+#                   cache headers, fonts, images. Empty = off
+#   HEADERS_FILE    the published _headers file, default SITE_DIR/_headers
 #   BUNDLE_DIR      folder whose .js/.css are summed; BUNDLE_MAX_KB its limit (gzip)
 #   AUDIT_DIRS      folders with a package-lock.json for npm audit, space separated
 #   TEST_COMMAND    shell command that runs the tests (output parsed for ok/FALHOU)
@@ -82,6 +85,18 @@ if [[ -n "${HTML_GLOBS:-}" ]]; then
   end
 fi
 
+if [[ -n "${SITE_RULES:-}" ]]; then
+  [[ "$SITE_RULES" == "absolute" || "$SITE_RULES" == "baseline" ]] \
+    || { echo "::error::site-rules must be absolute or baseline, not '$SITE_RULES'"; exit 1; }
+  [[ -n "${SITE_DIR:-}" ]] || { echo "::error::site-rules needs site-dir"; exit 1; }
+  log "Site rules (cache, fonts, images)"
+  python3 "$KIT/scripts/site_rules.py" check "$SITE_DIR" --mode "$SITE_RULES" \
+    --config "${BUDGET_FILE:-web-budget.json}" ${HEADERS_FILE:+--headers "$HEADERS_FILE"} --mount "${SITE_MOUNT:-}" > "$OUT/site_rules.json" \
+    || { echo "::error::site_rules.py did not run"; exit 1; }
+  args+=(--site-rules "$OUT/site_rules.json")
+  end
+fi
+
 if [[ -n "${SITE_DIR:-}" && -n "${SITE_MOUNT:-}" ]]; then
   mounted="$OUT/site"
   rm -rf "$mounted" && mkdir -p "$mounted$SITE_MOUNT" && cp -R "$SITE_DIR/." "$mounted$SITE_MOUNT/"
@@ -128,7 +143,7 @@ if [[ -n "${SITE_DIR:-}" && -n "${LH_PATHS:-}" ]]; then
   urls=()
   for p in $LH_PATHS; do urls+=(--url="http://localhost$p"); done
   "$BIN/lhci" collect --staticDistDir="$SITE_DIR" "${urls[@]}" -n "${LH_RUNS:-3}" \
-    --settings.chromeFlags="--headless=new --no-sandbox" \
+    --settings.chromeFlags="--headless=new --no-sandbox --disable-dev-shm-usage" \
     --settings.formFactor=mobile --settings.throttlingMethod=simulate > "$OUT/lhci.log" 2>&1 \
     || { echo "::warning::Lighthouse did not finish"; tail -20 "$OUT/lhci.log"; }
   [[ -d .lighthouseci ]] && mv .lighthouseci "$OUT/lhci"
