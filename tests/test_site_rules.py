@@ -186,11 +186,40 @@ expect("mounted site: patterns with the mount match", not json.loads(r.stdout)["
 # Names that look like hashes but are not, and hashes without a digit.
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 import site_rules  # noqa: E402
-for name in ("fonts/Inter-SemiBold.woff2", "fonts/Lato-ExtraBold.woff2", "img/foto-principal.webp",
-             "img/capa-larga-1400.avif", "favicon.svg", "img/hero-1920x1080.webp", "img/foto-2026x1111.avif"):
-    expect(f"not hashed: {name}", not site_rules.is_hashed(name, []), name)
-for name in ("_astro/index.DdKsxaZq.css", "assets/index-BhK3x9aZ.js", "_astro/hero.Qw12Er34.webp"):
-    expect(f"hashed: {name}", site_rules.is_hashed(name, []), name)
+for name in ("fonts/Inter-SemiBold.woff2", "img/logo-whatsapp2.webp", "img/team-reuniao2025.webp",
+             "img/foto-DSC_01234.webp", "img/hero-1920x1080.webp", "favicon.svg"):
+    expect(f"not hashed (outside a build folder): {name}", not site_rules.is_hashed(name, []), name)
+for name in ("_astro/index.DdKsxaZq.css", "assets/index-Bh-3x9aZ.js", "assets/index-BhK3_a-Z.js",
+             "_next/static/chunks/main-abc.js", "app/_app/immutable/x.js"):
+    expect(f"hashed (build folder): {name}", site_rules.is_hashed(name, []), name)
+expect("hashed_extra adds files", site_rules.is_hashed("static/v2/app.js", [r"^static/v\d+/"]), "")
+expect("unhash: Vite hash with - and _", site_rules.unhash("assets/index-Bh-3x9aZ.js") == "assets/index.[hash].js"
+       and site_rules.unhash("/assets/a-BhK3_a-Z.css?v=1") == "/assets/a.[hash].css?v=1", site_rules.unhash("assets/index-Bh-3x9aZ.js"))
+expect("unhash leaves other folders alone", site_rules.unhash("img/logo-whatsapp2.webp") == "img/logo-whatsapp2.webp", "")
+
+# CSS details the reviewer found.
+css = """/* @font-face { font-family: Gone; font-weight: 900; src: url(gone.ttf); } url(old.png) */
+@font-face { font-family: E; font-weight: 400; src: url("data:font/ttf;base64,AAAA") format("truetype"); }
+@font-face { font-family: T; font-weight: 400; src: url(/f/t.woff2); src: url(/f/t.ttf); }
+@font-face { font-family: W; font-weight: 400; src: url(/f/w.woff2); }
+.bg { background: url(/later.png); }
+"""
+faces = []
+got = site_rules.css_cases("a.css", css, 1, faces)
+pairs = {(c["rule"], c["text"]) for c in got}
+expect("css: comments are ignored", not any("gone" in t or "old.png" in t for _, t in pairs)
+       and not any(f[0] == "gone" for f in faces), pairs)
+expect("css: data: TTF inside src is caught", ("font-format", "data:font/ttf;base64") in pairs, pairs)
+expect("css: the second src of a face is read", ("font-format", "/f/t.ttf") in pairs, pairs)
+line = [c["line"] for c in got if c["text"] == "/later.png"]
+expect("css: img-format line is right after @font-face blocks", line == [5], line)
+expect("s-maxage counts for HTML", site_rules.max_age("public, max-age=0, s-maxage=86400", shared=True) == 86400, "")
+count, names = site_rules.outside_latin([(0x20, 0x7E), (0x1D00, 0x1DBF)])
+expect("phonetic extensions (latin-ext) are Latin", count == 0, names)
+trunc = good_site()
+write(f"{trunc}/broken.png", b"\x89PNG\r\n\x1a\n")
+r = run(trunc)
+expect("truncated image is a case, not a crash", ("img-px", "broken.png") in rules_of(r), rules_of(r))
 
 # --- limits and exceptions ------------------------------------------------------
 strict = run(good_site(), config={"limits": {"img_px": 1000, "font_weights": 1}})
@@ -268,6 +297,24 @@ expect("baseline: heavier image, new build hash, image added above = no new case
 cfg_bad = run(good_site(), config={"limits": {"img_kb": 900}})
 rc, panel = compare(None, metrics(cfg_bad), "--no-fail")
 expect("configuration error fails in any mode", rc == 1, panel)
+
+# More weights of a family in baseline = new cases (3 -> 5 must fail).
+wsite = good_site()
+faces3 = "".join(f"@font-face {{ font-family: Many; font-weight: {w}; src: url(/_astro/body.Kl12Mn34.woff2); }}\n" for w in (300, 400, 700))
+write(f"{wsite}/_astro/index.Ab12Cd34.css", GOOD_CSS + faces3)
+w_before = run(wsite, mode="baseline", config=mig)
+write(f"{wsite}/_astro/index.Ab12Cd34.css", GOOD_CSS + faces3 + faces3.replace("300", "100").replace("400", "900").replace("700", "800"))
+w_after = run(wsite, mode="baseline", config=mig)
+rc, panel = compare(metrics(w_before), metrics(w_after))
+expect("baseline: more font weights than main fails", rc == 1, panel)
+
+# The error line says which group failed.
+d = tempfile.mkdtemp()
+hp = os.path.join(d, "h.json")
+json.dump({"kit": 1, "metrics": metrics(out)}, open(hp, "w"))
+r = subprocess.run([sys.executable, HEALTH, "compare", "-", hp, "--no-fail"], capture_output=True, text=True)
+expect("error line names the site rules, not the budget", "::error::Site rules:" in r.stderr
+       and "Performance budget" not in r.stderr, r.stderr)
 
 if failures:
     print("\n".join(failures), file=sys.stderr)

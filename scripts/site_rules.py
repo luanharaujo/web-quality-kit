@@ -56,40 +56,37 @@ HASHABLE = (".js", ".mjs", ".css") + FONT_FILES + IMAGE_FILES + (".ico",)
 FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net", "p.typekit.net",
               "fonts.bunny.net", "fast.fonts.net", "cloud.typography.com", "use.fontawesome.com",
               "kit.fontawesome.com", "fonts.cdnfonts.com", "cdn.jsdelivr.net/npm/@fontsource")
-URL_RE = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)")
 
 
-def hash_seg(seg):
-    """8+ characters with a digit and a letter, or mixed case that is not a
-    CamelCase name (Inter-SemiBold, Lato-ExtraBold are names, not hashes)."""
-    if len(seg) < 8 or not re.fullmatch(r"[A-Za-z0-9_]+", seg):
-        return False
-    if re.fullmatch(r"\d+x\d+(@\dx)?", seg):  # hero-1920x1080: a size, not a hash
-        return False
-    if re.search(r"\d", seg) and len(re.findall(r"[A-Za-z]", seg)) >= 2:
-        return True
-    camel_words = re.fullmatch(r"(?:[A-Z][a-z]{2,})+", seg)
-    return bool(re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg)) and not camel_words
+# Folders where build tools put only content-hashed files: Astro, Vite,
+# Next.js, SvelteKit. Guessing a hash from a name is not reliable (logo2025,
+# Inter-SemiBold and Vite hashes with "-" all fool it), so the folder decides;
+# others are added with "cache": {"hashed_dirs": [...]} or hashed_extra.
+HASHED_DIRS = ("_astro/", "assets/", "_next/static/", "_app/immutable/")
+# The build hash in a hashed file's name: Astro name.HASH.ext, Vite name-HASH.ext
+# (8 URL-safe base64 characters, "-" and "_" included).
+HASH_TOKEN = re.compile(r"[.-][A-Za-z0-9_-]{8}(?=\.[A-Za-z0-9]+$)")
 
 
-HASH_IN_NAME = re.compile(r"(?<=[.-])([A-Za-z0-9_]{8,})(?=\.[A-Za-z0-9]+(?:[?#\s'\")]|$))")
-
-
-def unhash(text):
-    """The same file across builds: a build hash in a name becomes [hash], so
-    "never worse" compares cases, not hashes."""
-    return HASH_IN_NAME.sub(lambda m: "[hash]" if hash_seg(m.group(1)) else m.group(1), text)
-
-
-def is_hashed(rel, extra):
-    """A build-tool content hash in the name: Vite/Astro style name-Ab12Cd34.ext
-    or name.Ab12Cd34.ext (8+ chars with a digit, or mixed case)."""
+def is_hashed(rel, extra, dirs=HASHED_DIRS):
+    rel = rel.replace(os.sep, "/").lstrip("/")
     if not rel.lower().endswith(HASHABLE):
         return False
     if any(re.search(p, rel) for p in extra):
         return True
-    stem = os.path.basename(rel).rsplit(".", 1)[0]
-    return any(hash_seg(seg) for seg in re.split(r"[.-]", stem)[1:])
+    return any(rel.startswith(d) or ("/" + d) in ("/" + rel) for d in dirs)
+
+
+def unhash(text, dirs=HASHED_DIRS):
+    """The same file across builds: the hash of a file in a build folder
+    becomes [hash], so "never worse" compares cases, not hashes."""
+    def one(m):
+        url = m.group(0)
+        if not any(d in url for d in dirs):
+            return url
+        base, _, q = url.partition("?")
+        return HASH_TOKEN.sub(".[hash]", base) + (("?" + q) if q else "")
+    return re.sub(r"[^\s'\"()|,]+", one, text)
 
 
 # --- cache ---------------------------------------------------------------------
@@ -137,10 +134,12 @@ def cache_control(url, rules):
     return ", ".join(values)
 
 
-def max_age(cc):
-    m = re.findall(r"(?:^|[,\s])(?:s-)?max-age\s*=\s*(\d+)", cc, re.I)
-    m2 = re.findall(r"(?:^|[,\s])max-age\s*=\s*(\d+)", cc, re.I)
-    return int(m2[-1]) if m2 else (int(m[-1]) if m else None)
+def max_age(cc, shared=False):
+    """max-age (the browser); shared=True: the longest of max-age and
+    s-maxage (a CDN keeps the page that long)."""
+    names = r"(?:max-age|s-maxage)" if shared else r"max-age"
+    m = re.findall(r"(?:^|[,\s])" + names + r"\s*=\s*(\d+)", cc, re.I)
+    return max(int(x) for x in m) if m else None
 
 
 def page_url(rel, mount=""):
@@ -150,7 +149,7 @@ def page_url(rel, mount=""):
     return url[: -len(".html")] if url.endswith(".html") else url
 
 
-def cache_cases(site, files, headers, extra_hashed, mount=""):
+def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS):
     if not os.path.exists(headers):
         return [case(os.path.relpath(headers, site) if headers.startswith(site) else headers,
                      "cache-headers-file", 0, "no _headers file: hashed files cannot be cached for a year")]
@@ -160,10 +159,10 @@ def cache_cases(site, files, headers, extra_hashed, mount=""):
         if rel.endswith(".html"):
             url = page_url(rel, mount)
             cc = cache_control(url, rules)
-            age = max_age(cc)
+            age = max_age(cc, shared=True)
             if "immutable" in cc.lower() or (age is not None and age > HTML_MAX_AGE):
                 out.append(case(rel, "cache-html", 0, "", f"{url}: Cache-Control '{cc}' (HTML: max-age <= {HTML_MAX_AGE})"))
-        elif is_hashed(rel, extra_hashed):
+        elif is_hashed(rel, extra_hashed, dirs):
             url = mount + "/" + rel.replace(os.sep, "/")
             cc = cache_control(url, rules)
             age = max_age(cc) or 0
@@ -214,18 +213,45 @@ def srcset_urls(value):
     return [p.strip().split()[0] for p in value.split(",") if p.strip()]
 
 
+def strip_comments(css):
+    """CSS without /* comments */, same length (offsets and lines stay right)."""
+    return re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), css, flags=re.S)
+
+
+def declarations(body, prop):
+    """Every value of `prop` in a declaration block; a ";" inside url(...) or
+    quotes (data: URIs) does not end the value."""
+    out = []
+    for m in re.finditer(r"(?:^|[;{\s])" + prop + r"\s*:", body, re.I):
+        i, depth, quote = m.end(), 0, ""
+        while i < len(body):
+            ch = body[i]
+            if quote:
+                quote = "" if ch == quote else quote
+            elif ch in "'\"":
+                quote = ch
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth = max(0, depth - 1)
+            elif ch == ";" and depth == 0:
+                break
+            i += 1
+        out.append(body[m.end():i])
+    return out
+
+
 def font_faces(css):
-    """(family, weight, src text, offset) per @font-face block."""
+    """(family, weight, [src values], start, end) per @font-face block."""
     out = []
     for m in re.finditer(r"@font-face\s*{([^}]*)}", css, re.I):
         body = m.group(1)
-        fam = re.search(r"font-family\s*:\s*([^;]+)", body, re.I)
-        wt = re.search(r"font-weight\s*:\s*([^;]+)", body, re.I)
-        src = re.search(r"src\s*:\s*([^;]+)", body, re.I)
-        weight = (wt.group(1).strip().lower() if wt else "400")
+        fam = declarations(body, "font-family")
+        wt = declarations(body, "font-weight")
+        weight = (wt[-1].strip().lower() if wt else "400")
         weight = {"normal": "400", "bold": "700"}.get(weight, weight)
-        out.append((fam.group(1).strip().strip("'\"").lower() if fam else "?", weight,
-                    src.group(1) if src else "", m.start()))
+        out.append((fam[-1].strip().strip("'\"").lower() if fam else "?", weight,
+                    declarations(body, "src"), m.start(), m.end()))
     return out
 
 
@@ -233,27 +259,40 @@ def line_at(text, offset, base=1):
     return base + text.count("\n", 0, offset)
 
 
+CSS_URL = re.compile(r"url\(\s*(?:'([^']*)'|\"([^\"]*)\"|([^)\s]*))\s*\)")
+
+
+def css_urls(text):
+    for m in CSS_URL.finditer(text):
+        yield m.start(), (m.group(1) or m.group(2) or m.group(3) or "").strip()
+
+
 def css_cases(rel, css, base_line, faces):
+    css = strip_comments(css)
     out = []
     for m in re.finditer(r"@import\s+(?:url\()?\s*['\"]?([^'\")\s;]+)", css, re.I):
         if any(h in m.group(1) for h in FONT_HOSTS):
             out.append(case(rel, "font-cdn", line_at(css, m.start(), base_line), m.group(1)))
-    for fam, weight, src, off in font_faces(css):
-        faces.append((fam, weight, rel, line_at(css, off, base_line)))
-        for m in URL_RE.finditer(src):
-            url = m.group(2)
-            ln = line_at(css, off, base_line)
-            if is_external(url):
-                out.append(case(rel, "font-cdn", ln, url))
-            elif url.startswith("data:"):
-                if not url.startswith("data:font/woff2"):
-                    out.append(case(rel, "font-format", ln, url[:40]))
-            elif not path_of(url).lower().endswith(".woff2"):
-                out.append(case(rel, "font-format", ln, url))
-    for m in URL_RE.finditer(re.sub(r"@font-face\s*{[^}]*}", "", css, flags=re.I)):
-        url = path_of(m.group(2))
-        if not url.startswith("data:") and url.lower().endswith(RASTER):
-            out.append(case(rel, "img-format", line_at(css, m.start(), base_line), url))
+    spans = []
+    for fam, weight, srcs, start, end in font_faces(css):
+        spans.append((start, end))
+        ln = line_at(css, start, base_line)
+        faces.append((fam, weight, rel, ln))
+        for src in srcs:
+            for _, url in css_urls(src):
+                if is_external(url):
+                    out.append(case(rel, "font-cdn", ln, url))
+                elif url.startswith("data:"):
+                    if not url.lower().startswith(("data:font/woff2", "data:application/font-woff2")):
+                        out.append(case(rel, "font-format", ln, url.split(",")[0][:40]))
+                elif not path_of(url).lower().endswith(".woff2"):
+                    out.append(case(rel, "font-format", ln, url))
+    for off, url in css_urls(css):
+        if any(a <= off < b for a, b in spans):
+            continue
+        u = path_of(url)
+        if not u.startswith("data:") and u.lower().endswith(RASTER):
+            out.append(case(rel, "img-format", line_at(css, off, base_line), u))
     return out
 
 
@@ -288,8 +327,8 @@ def html_cases(rel, text, eager, faces):
         out += css_cases(rel, css, base_line, faces)
     for tag, a, line in p.tags:
         if "style" in a and "url(" in a["style"]:
-            for m in URL_RE.finditer(a["style"]):
-                u = path_of(m.group(2))
+            for _, url in css_urls(a["style"]):
+                u = path_of(url)
                 if not u.startswith("data:") and u.lower().endswith(RASTER):
                     out.append(case(rel, "img-format", line, u))
     return out
@@ -340,10 +379,11 @@ def image_size(path):
     return None
 
 
-# Unicode blocks of a Latin text font: Basic Latin to Latin Extended-B, IPA and
-# spacing modifiers, combining marks, Latin Extended Additional/C/D, general
+# Unicode blocks of a Latin text font (Google Fonts' latin + latin-ext): Basic
+# Latin to Latin Extended-B, IPA and spacing modifiers, combining marks,
+# phonetic extensions, Latin Extended Additional/C/D, general
 # punctuation to miscellaneous symbols and arrows, Latin ligatures, BOM.
-LATIN = [(0x0000, 0x036F), (0x1E00, 0x1EFF), (0x2000, 0x2BFF), (0x2C60, 0x2C7F), (0xA720, 0xA7FF),
+LATIN = [(0x0000, 0x036F), (0x1D00, 0x1DBF), (0x1E00, 0x1EFF), (0x2000, 0x2BFF), (0x2C60, 0x2C7F), (0xA720, 0xA7FF),
          (0xFB00, 0xFB06), (0xFEFF, 0xFEFF), (0xFFFC, 0xFFFD)]
 BLOCKS = [(0x0370, 0x03FF, "Greek"), (0x1F00, 0x1FFF, "Greek"), (0x0400, 0x052F, "Cyrillic"),
           (0x1C80, 0x1C8F, "Cyrillic"), (0x2DE0, 0x2DFF, "Cyrillic"), (0xA640, 0xA69F, "Cyrillic"),
@@ -423,8 +463,9 @@ def check(a):
         dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d != "node_modules")
         for n in sorted(names):
             files.append(os.path.relpath(os.path.join(root, n), site))
+    dirs = HASHED_DIRS + tuple(cfg["hashed_dirs"])
     cases = cache_cases(site, files, a.headers or os.path.join(site, "_headers"), cfg["hashed"],
-                        a.mount.rstrip("/"))
+                        a.mount.rstrip("/"), dirs)
     faces = []
     for rel in files:
         low = rel.lower()
@@ -440,7 +481,11 @@ def check(a):
             lim_kb, _ = budget.limit_for("img_kb", rel, limits, exceptions)
             if kb > lim_kb:
                 cases.append(case(rel, "img-kb", 0, "", f"{kb:.0f} KB (limit {lim_kb:g} KB)"))
-            size = None if low.endswith(".svg") else image_size(full)
+            try:
+                size = None if low.endswith(".svg") else image_size(full)
+            except (struct.error, OSError, IndexError) as e:
+                cases.append(case(rel, "img-px", 0, "unreadable image", str(e)[:80]))
+                size = None
             lim_px, _ = budget.limit_for("img_px", rel, limits, exceptions)
             if size and max(size) > lim_px:
                 cases.append(case(rel, "img-px", 0, "", f"{size[0]}x{size[1]} px (limit {lim_px:g} px)"))
@@ -450,13 +495,16 @@ def check(a):
     for fam, ws in sorted(weights.items()):
         lim, _ = budget.limit_for("font_weights", fam, limits, exceptions)
         if len(ws) > lim:
-            rel, line = sorted(ws.values())[0]
-            cases.append(case(rel, "font-weights", line, fam, f"{len(ws)} weights ({', '.join(sorted(ws))}); limit {lim:g}"))
+            # One case per weight over the limit: one more weight = one more case.
+            for w in sorted(ws)[int(lim):]:
+                rel, line = ws[w]
+                cases.append(case(rel, "font-weights", line, f"{fam} weight {w}",
+                                  f"{len(ws)} weights ({', '.join(sorted(ws))}); limit {lim:g}"))
     cases += font_subset_cases(site, [f for f in files if f.lower().endswith(".woff2")])
     out = {"mode": a.mode, "errors": errors, "cache": [], "fonts": [], "images": [], "excepted": []}
     for c in cases:
         exc = budget.rule_exception(c["rule"], c["file"], exceptions)
-        c = dict(c, file=unhash(c["file"]), text=unhash(c["text"]))
+        c = dict(c, file=unhash(c["file"], dirs), text=unhash(c["text"], dirs))
         if exc:
             out["excepted"].append(dict(c, reason=exc["reason"]))
         else:
