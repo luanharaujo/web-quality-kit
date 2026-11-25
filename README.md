@@ -15,6 +15,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Lighthouse: performance, accessibility, best practices, SEO | Lighthouse CI, median of 3 runs per page | `lighthouse-paths` |
 | Accessibility (axe) | the axe-core rules inside Lighthouse's accessibility audit | `lighthouse-paths` |
 | Performance budget (phone, slow network) | `scripts/budget.py` on the Lighthouse reports: lab LCP, CLS, TBT (stands in for INP), page weight and JS weight per page; limits in `web-budget.json` | `budget-mode`, `budget-file` |
+| Site rules: cache, fonts, images | `scripts/site_rules.py` on the built site (no browser): Cloudflare `_headers` (hashed files `max-age=31536000, immutable`, HTML short); fonts self-hosted, WOFF2, Latin subset (read from the font's cmap), at most 2 weights per family, no font CDN; every `<img>` with `alt` and `width`/`height` (or an inline `aspect-ratio`), WebP/AVIF (SVG fine), `loading="lazy"` after the first 2, files up to 1600 px and 300 KB | `site-rules`, `headers-file` |
 | Bundle size | sum of `.js` and `.css`, gzip, with a limit | `bundle-dir`, `bundle-max-kb` |
 | Vulnerable dependencies | `npm audit` on each lockfile | `audit-dirs` |
 | Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
@@ -51,6 +52,12 @@ Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulate
 - `budget-mode: baseline` (a site migrating to the budget): a page over a limit fails only when it is new or worse than on main beyond the lab noise; the panel shows how far each page is from the goal and says when to switch to `absolute`.
 
 `web-budget.json` at the repository root (`templates/web-budget.json`) may only make limits **stricter**. A looser limit is an `exceptions` entry with `limit`, `value`, `reason`, `approved_by`, `date` and, ideally, `expires` and `pages`; without one, or once it expires, the configuration error fails the job in any mode.
+
+`baseline` also needs a written plan in the same file, `"migration": {"reason": "...", "until": "YYYY-MM-DD"}`; without it, or once the date has passed, it is a configuration error.
+
+## Site rules (`site-rules`)
+
+Same two modes: `absolute` fails on any case; `baseline` fails on a new case (one main did not have). The limits `img_px` (1600), `img_kb` (300), `font_weights` (2) and `img_eager` (2 images at the top of a page may load eagerly) live in `web-budget.json` `limits`, stricter only. A case that must stay is an exception with `rule` (e.g. `img-format`) and the `files` it covers (globs), plus `reason`, `approved_by`, `date` and ideally `expires`; covered cases are counted apart in the panel. A build tool's hashed file is recognised by its name (`name.Ab12Cd34.js`, `name-Ab12Cd34.css`); other long-lived paths go in `"cache": {"hashed_extra": ["regex"]}`, which can only add files to the check.
 
 ## Database of a server (`server-queries`)
 
@@ -108,6 +115,7 @@ jobs:
           bundle-max-kb: "300"
           audit-dirs: app api
           budget-mode: absolute   # new site; "baseline" while migrating an old one
+          site-rules: absolute
           server-queries: server-queries.json   # a server with a database
 ```
 
@@ -177,6 +185,6 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
+`tests/test_site_rules.py` (a good built site has no case; a bad one has each cache, font and image problem caught by its own rule; exceptions hide only their files; absolute fails on any case, baseline on new ones), `tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
 
 The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).

@@ -57,5 +57,10 @@
  "{n} in the baseline": "{n} na linha de base",
  "none; baseline never grows": "nenhuma; linha de base nunca cresce",
  "baseline": "linha de base",
- "First measure: only the rules in 🔴 fail; the rest is \"never worse\" from now on.": "Primeira medida: só as regras em 🔴 falham; o resto vale \"não piorar\" daqui em diante."
+ "First measure: only the rules in 🔴 fail; the rest is \"never worse\" from now on.": "Primeira medida: só as regras em 🔴 falham; o resto vale \"não piorar\" daqui em diante.",
+ "Cache headers": "Cabeçalhos de cache",
+ "Fonts": "Fontes",
+ "Images": "Imagens",
+ "Site rules: configuration": "Regras do site: configuração",
+ "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json)."
 }

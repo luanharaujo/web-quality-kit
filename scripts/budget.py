@@ -26,12 +26,20 @@ web-budget.json:
     "exceptions": [
       {"limit": "page_kb", "value": 1500, "pages": ["/gallery/"],
        "reason": "photo gallery", "approved_by": "owner", "date": "2026-11-25",
-       "expires": "2027-05-25"}
-    ]
+       "expires": "2027-05-25"},
+      {"rule": "img-format", "files": ["og/*.png"], "reason": "social previews need PNG",
+       "approved_by": "owner", "date": "2026-11-25"}
+    ],
+    "migration": {"reason": "old site, images being converted", "until": "2027-02-01"},
+    "cache": {"hashed_extra": ["^static/v\\d+/"]}
   }
+
+"limits" also takes the static rules' limits (site_rules.py): img_px, img_kb,
+font_weights, img_eager. "migration" is required in baseline mode.
 """
 import argparse
 import datetime
+import fnmatch
 import glob
 import json
 import os
@@ -42,25 +50,65 @@ import sys
 # Kit defaults (the strictest a repository gets without asking): Google's
 # "good" thresholds for LCP and CLS; TBT stands in for INP in the lab
 # (Lighthouse's "good" TBT on mobile is 200 ms); weights are transfer sizes.
-DEFAULTS = {
+LH_DEFAULTS = {
     "lcp_ms": 2500,
     "cls": 0.1,
     "tbt_ms": 200,
     "page_kb": 1024,
     "js_kb": 150,
 }
-LABELS = {
-    "lcp_ms": "LCP (ms)",
-    "cls": "CLS",
-    "tbt_ms": "TBT (ms, lab stand-in for INP)",
-    "page_kb": "Page weight (kB transferred)",
-    "js_kb": "JavaScript (kB transferred)",
+# Static rules on the built site (site_rules.py): image file size, fonts,
+# images allowed above the fold without loading="lazy".
+STATIC_DEFAULTS = {
+    "img_px": 1600,
+    "img_kb": 300,
+    "font_weights": 2,
+    "img_eager": 2,
 }
+DEFAULTS = {**LH_DEFAULTS, **STATIC_DEFAULTS}
+RULES = ("cache-headers-file", "cache-hashed", "cache-html", "font-cdn", "font-format", "font-weights",
+         "font-subset", "img-alt", "img-size", "img-format", "img-lazy", "img-px", "img-kb")
 # Slowest acceptable lab profile: Lighthouse's default mobile "Slow 4G".
 MIN_RTT_MS = 150
 MAX_THROUGHPUT_KBPS = 1638.4
 MIN_CPU_SLOWDOWN = 4
-EXCEPTION_FIELDS = ("limit", "value", "reason", "approved_by", "date")
+EXCEPTION_FIELDS = ("reason", "approved_by", "date")
+
+
+def load(path, today, mode="absolute"):
+    """The repository's config, validated: {"limits", "exceptions", "errors",
+    "hashed"}. Baseline mode needs a "migration" entry (reason, until): a site
+    stays in baseline only with a written plan and a date."""
+    limits, exceptions, errors = load_config(path, today)
+    cfg = {}
+    if path and os.path.exists(path):
+        try:
+            cfg = json.load(open(path))
+        except (OSError, ValueError):
+            cfg = {}
+    cfg = cfg if isinstance(cfg, dict) else {}
+    if mode == "baseline":
+        mig = cfg.get("migration")
+        if not isinstance(mig, dict) or len(str(mig.get("reason", "")).strip()) < 10 or not mig.get("until"):
+            errors.append("baseline mode needs \"migration\": {\"reason\": ..., \"until\": \"YYYY-MM-DD\"} "
+                          "in the budget file (when the site will meet the budget)")
+        else:
+            try:
+                until = datetime.date.fromisoformat(str(mig["until"]))
+                if until < today:
+                    errors.append(f"migration.until {until} has passed: meet the budget and switch to absolute, "
+                                  "or set a new date")
+            except ValueError:
+                errors.append("migration.until must be YYYY-MM-DD")
+    hashed = (cfg.get("cache") or {}).get("hashed_extra") or [] if isinstance(cfg.get("cache"), dict) else []
+    good = []
+    for pat in hashed if isinstance(hashed, list) else [None]:
+        try:
+            re.compile(pat)
+            good.append(pat)
+        except (re.error, TypeError):
+            errors.append(f"cache.hashed_extra: {pat!r} is not a regular expression")
+    return {"limits": limits, "exceptions": exceptions, "errors": errors, "hashed": good}
 
 
 def load_config(path, today):
@@ -74,7 +122,7 @@ def load_config(path, today):
         return dict(DEFAULTS), [], [f"{path}: not valid JSON ({e})"]
     if not isinstance(cfg, dict):
         return dict(DEFAULTS), [], [f"{path}: must be a JSON object"]
-    unknown = set(cfg) - {"limits", "exceptions", "$schema", "slo"}
+    unknown = set(cfg) - {"limits", "exceptions", "$schema", "slo", "migration", "cache"}
     if unknown:
         errors.append(f"{path}: unknown keys {sorted(unknown)}")
     limits = dict(DEFAULTS)
@@ -94,14 +142,23 @@ def load_config(path, today):
         if not isinstance(e, dict):
             errors.append(f"{where}: must be an object")
             continue
-        missing = [f for f in EXCEPTION_FIELDS if not e.get(f) and e.get(f) != 0]
+        missing = [f for f in EXCEPTION_FIELDS if not e.get(f)]
+        if ("limit" in e) == ("rule" in e):
+            missing.insert(0, "limit or rule (one of them)")
+        elif "limit" in e and "value" not in e:
+            missing.append("value")
+        elif "rule" in e and not e.get("files"):
+            missing.append("files (a rule exception names the files it covers)")
         if missing:
             errors.append(f"{where}: missing {', '.join(missing)}")
             continue
-        if e["limit"] not in DEFAULTS:
+        if "rule" in e and e["rule"] not in RULES:
+            errors.append(f"{where}: unknown rule {e['rule']} (known: {', '.join(RULES)})")
+            continue
+        if "limit" in e and e["limit"] not in DEFAULTS:
             errors.append(f"{where}: unknown limit {e['limit']}")
             continue
-        if not isinstance(e["value"], (int, float)) or isinstance(e["value"], bool) or e["value"] < 0:
+        if "limit" in e and (not isinstance(e["value"], (int, float)) or isinstance(e["value"], bool) or e["value"] < 0):
             errors.append(f"{where}: value must be a number >= 0")
             continue
         try:
@@ -116,20 +173,38 @@ def load_config(path, today):
         if len(str(e["reason"]).strip()) < 10:
             errors.append(f"{where}: reason too short to explain the exception")
             continue
-        pages = e.get("pages")
-        if pages is not None and (not isinstance(pages, list) or not all(isinstance(p, str) for p in pages)):
-            errors.append(f"{where}: pages must be a list of paths")
+        bad_list = False
+        for key in ("pages", "files"):
+            v = e.get(key)
+            if v is not None and (not isinstance(v, list) or not v or not all(isinstance(p, str) for p in v)):
+                errors.append(f"{where}: {key} must be a non-empty list of paths")
+                bad_list = True
+        if bad_list:
             continue
         exceptions.append(e)
     return limits, exceptions, errors
 
 
-def limit_for(name, page, limits, exceptions):
-    """The limit of a metric on a page, and the exception that set it (if any)."""
+def covers(e, where):
+    """Does the exception reach this page (exact path) or file (glob)?"""
+    if e.get("pages") is None and e.get("files") is None:
+        return True
+    return where in (e.get("pages") or []) or any(fnmatch.fnmatch(where, g) for g in e.get("files") or [])
+
+
+def limit_for(name, where, limits, exceptions):
+    """The limit of a metric on a page or file, and the exception that set it (if any)."""
     for e in exceptions:
-        if e["limit"] == name and (e.get("pages") is None or page in e["pages"]):
+        if e.get("limit") == name and covers(e, where):
             return max(limits[name], e["value"]), e
     return limits[name], None
+
+
+def rule_exception(rule, file, exceptions):
+    for e in exceptions:
+        if e.get("rule") == rule and covers(e, file):
+            return e
+    return None
 
 
 def metrics_of(lhr):
@@ -174,7 +249,8 @@ def page_of(lhr):
 
 def check(a):
     today = datetime.date.fromisoformat(a.today) if a.today else datetime.date.today()
-    limits, exceptions, errors = load_config(a.config, today)
+    cfg = load(a.config, today, a.mode)
+    limits, exceptions, errors = cfg["limits"], cfg["exceptions"], cfg["errors"]
     runs = {}
     for path in sorted(glob.glob(os.path.join(a.lhci or "", "lhr-*.json"))):
         lhr = json.load(open(path))
@@ -189,12 +265,12 @@ def check(a):
     for p in wanted:
         if p not in runs:
             errors.append(f"no Lighthouse result for {p}: the budget cannot be checked")
-    if not wanted and not runs:
+    if not wanted and not runs:  # nothing measured
         errors.append("no Lighthouse results: the budget needs lighthouse-paths")
     pages = {}
     for page, rs in sorted(runs.items()):
         row = {}
-        for name in DEFAULTS:
+        for name in LH_DEFAULTS:
             vals = [r[name] for r in rs if r[name] is not None]
             if not vals:
                 errors.append(f"{page}: Lighthouse gave no {name}")
@@ -205,9 +281,9 @@ def check(a):
                          "exception": bool(exc)}
         pages[page] = row
     out = {"mode": a.mode, "pages": pages, "errors": errors,
-           "defaults": DEFAULTS, "exceptions": [
+           "defaults": LH_DEFAULTS, "exceptions": [
                {k: e.get(k) for k in ("limit", "value", "pages", "reason", "approved_by", "date", "expires")}
-               for e in exceptions]}
+               for e in exceptions if "limit" in e]}
     print(json.dumps(out, ensure_ascii=False))
     return 0
 

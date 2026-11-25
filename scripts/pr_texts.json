@@ -169,6 +169,42 @@
    },
    {
     "match": [
+     "Cabeçalhos de cache",
+     "Cache headers"
+    ],
+    "name": "Cache headers",
+    "means": "Files with a hash in the name (JS, CSS, fonts, images) cached on the phone for a year (immutable); HTML pages cached briefly so changes show up quickly. Checks the _headers file.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Fontes",
+     "Fonts"
+    ],
+    "name": "Fonts",
+    "means": "Fonts served by the site itself, WOFF2 only, at most 2 weights per family and only Latin characters (smaller files). A font from Google Fonts or another CDN blocks.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Imagens",
+     "Images"
+    ],
+    "name": "Images",
+    "means": "Every image with alt text and a declared size (the page does not jump), in WebP or AVIF, lazy loading below the top, up to 1600 px and 300 KB.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Regras do site: configuração",
+     "Site rules: configuration"
+    ],
+    "name": "Site rules: configuration",
+    "means": "The repository's web-budget.json: a looser limit without a registered exception, an expired exception or one without the files it covers blocks the PR.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
      "Database queries per list"
     ],
     "name": "Database queries per list",
@@ -453,6 +489,42 @@
     ],
     "name": "JavaScript da página",
     "means": "Quanto JavaScript a página baixa. Padrão: até 150 kB.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Cabeçalhos de cache",
+     "Cache headers"
+    ],
+    "name": "Cabeçalhos de cache",
+    "means": "Arquivo com hash no nome (JS, CSS, fontes, imagens) guardado no celular por 1 ano (immutable); página HTML com cache curto, para a mudança aparecer logo. Confere o arquivo _headers.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Fontes",
+     "Fonts"
+    ],
+    "name": "Fontes",
+    "means": "Fontes servidas pelo próprio site, só WOFF2, no máximo 2 pesos por família e só com caracteres latinos (arquivo menor). Fonte do Google Fonts ou outro CDN barra.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Imagens",
+     "Images"
+    ],
+    "name": "Imagens",
+    "means": "Toda imagem com texto alternativo (alt) e tamanho declarado (a página não pula), em WebP ou AVIF, carregamento preguiçoso fora do topo, até 1600 px e 300 KB.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Regras do site: configuração",
+     "Site rules: configuration"
+    ],
+    "name": "Regras do site: configuração",
+    "means": "O web-budget.json do repositório: limite afrouxado sem exceção registrada, exceção vencida ou sem os arquivos que cobre barra o PR.",
     "rigor": "blocks"
    },
    {

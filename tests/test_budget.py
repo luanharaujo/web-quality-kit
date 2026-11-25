@@ -28,8 +28,13 @@ def lhr(page, lcp=1200, cls=0.0, tbt=50, total_kb=300, js_kb=40, settings=MOBILE
             {"resourceType": "Script", "transferSize": js_kb * 1024}]}}}}
 
 
+MIGRATION = {"migration": {"reason": "old site being brought to the budget", "until": "2027-06-01"}}
+
+
 def run_budget(reports, config=None, mode="absolute", pages=None):
     d = tempfile.mkdtemp()
+    if mode == "baseline" and config is None:
+        config = MIGRATION
     for i, r in enumerate(reports):
         json.dump(r, open(os.path.join(d, f"lhr-{i}.json"), "w"))
     cfg = os.path.join(d, "web-budget.json")
@@ -107,6 +112,19 @@ r = run_budget([lhr("/")], pages="/ /about/")
 expect("page without a Lighthouse result is an error", any("/about/" in e for e in r["errors"]), r)
 r = run_budget([], pages="")
 expect("no Lighthouse at all is an error", r["errors"], r)
+
+r = run_budget([lhr("/")], {}, mode="baseline")
+expect("baseline without a migration plan is an error", any("migration" in e for e in r["errors"]), r)
+r = run_budget([lhr("/")], {"migration": {"reason": "old site being brought over", "until": "2026-11-01"}}, mode="baseline")
+expect("baseline with a passed migration date is an error", any("has passed" in e for e in r["errors"]), r)
+r = run_budget([lhr("/")], {"exceptions": [{"rule": "img-format", "reason": "social preview images",
+                                            "approved_by": "owner", "date": "2026-11-20"}]})
+expect("rule exception without files is an error", any("files" in e for e in r["errors"]), r)
+r = run_budget([lhr("/")], {"exceptions": [{"rule": "no-such-rule", "files": ["a"], "reason": "some reason here",
+                                            "approved_by": "owner", "date": "2026-11-20"}]})
+expect("unknown rule is an error", any("unknown rule" in e for e in r["errors"]), r)
+r = run_budget([lhr("/")], {"limits": {"img_kb": 500}})
+expect("looser static limit is an error too", any("looser" in e for e in r["errors"]), r)
 
 # --- compare: absolute -------------------------------------------------------
 slow = run_budget([lhr("/", lcp=4000)])
