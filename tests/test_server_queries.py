@@ -88,6 +88,14 @@ rc, _ = panel(swapped, fixed)
 check("baseline: swapping a baseline route for another (same size) is red", rc == 1)
 check("baseline: a tested route that grows is red anyway", panel(old, old)[0] == 1)
 
+# --- the interaction scanner (1.8.0) finds the routes when no routes_command ---
+if os.path.exists(os.path.join(S, "interaction_gate.py")):
+    c = cfg("bad")
+    del c["routes_command"]
+    sc = sq.check(c, ROOT)
+    check("scanner: untested GET route found with its file:line",
+          [u["route"] for u in sc["uncovered"]] == ["GET /products"] and "handlers_bad.mjs" in sc["uncovered"][0]["where"], sc["uncovered"])
+
 # --- exemptions ------------------------------------------------------------------
 ex = sq.check(cfg("bad", exempt_tables={"orders": "fixed list of 10 rows"}), ROOT)
 check("exempt table: no scan reported", ex["scans"] == [], ex["scans"])
