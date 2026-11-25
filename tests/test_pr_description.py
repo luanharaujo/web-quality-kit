@@ -70,7 +70,8 @@ if WEB:
     import web_health as wh
     labels = [l for _, l in wh.CASE_METRICS] + ["Tests", "Bundle size (JS+CSS, gzip)",
               "Vulnerable dependencies (npm audit)", "Lighthouse Performance", "Lighthouse Accessibility",
-              "Lighthouse Best practices", "Lighthouse SEO"]
+              "Lighthouse Best practices", "Lighthouse SEO", *wh.BUDGET_LABELS.values(),
+              "Performance budget: configuration"]
     pt = json.load(open(os.path.join(S, "panel_pt.json")))
     for lang in ("en", "pt"):
         for label in labels:

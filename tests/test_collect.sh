@@ -34,3 +34,50 @@ m = json.load(open(sys.argv[1]))["metrics"]
 assert any("outside.webmanifest" in c["text"] for c in m["links"]), m["links"]
 print("links-skip-paths: ok")
 PY
+
+# Performance budget with a real Lighthouse run (phone, slow network): a heavy
+# page (big incompressible script in <head>, long task at load) must blow the
+# JS weight and LCP limits, and the absolute budget must fail the job.
+HEAVY="$(mktemp -d)"
+python3 - "$HEAVY" <<'PY'
+import base64, os, sys
+d = sys.argv[1]
+blob = base64.b64encode(os.urandom(300 * 1024)).decode()
+open(os.path.join(d, "big.js"), "w").write(
+    f'window.BLOB = "{blob}";\nconst t = Date.now(); while (Date.now() - t < 600) {{}}\n')
+open(os.path.join(d, "index.html"), "w").write(
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Heavy</title>'
+    '<script src="/big.js"></script></head><body><main><h1>Heavy page</h1>'
+    '<p>Text that becomes the largest paint once the blocking script is done.</p></main></body></html>\n')
+PY
+OUT3="$(mktemp -d)"
+(cd "$HEAVY" && OUT="$OUT3" SITE_DIR=. LH_PATHS="/" LH_RUNS=1 BUDGET_MODE=absolute \
+  bash "$HERE/../scripts/web_ci.sh" > "$OUT3/log.txt" 2>&1) || { cat "$OUT3/log.txt"; exit 1; }
+python3 - "$OUT3/health.json" <<'PY'
+import json, sys
+b = json.load(open(sys.argv[1]))["metrics"]["budget"]
+assert not b["errors"], b["errors"]
+page = b["pages"]["/"]
+assert page["js_kb"]["value"] > page["js_kb"]["limit"], page
+assert page["lcp_ms"]["value"] > page["lcp_ms"]["limit"], page
+print("budget (real Lighthouse):", {k: v["value"] for k, v in page.items()})
+PY
+if python3 "$HERE/../scripts/web_health.py" compare - "$OUT3/health.json" --no-fail > "$OUT3/panel.md"; then
+  cat "$OUT3/panel.md"; echo "absolute budget did not fail the heavy page"; exit 1
+fi
+echo "budget fails the heavy page: ok"
+
+# The light test site meets the default budget.
+OUT4="$(mktemp -d)"
+(cd "$HERE/cases/site" && OUT="$OUT4" SITE_DIR=. LH_PATHS="/" LH_RUNS=1 BUDGET_MODE=absolute \
+  BUDGET_FILE=/nonexistent bash "$HERE/../scripts/web_ci.sh" > "$OUT4/log.txt" 2>&1) || { cat "$OUT4/log.txt"; exit 1; }
+python3 "$HERE/../scripts/web_health.py" compare - "$OUT4/health.json" > "$OUT4/panel.md" \
+  || { cat "$OUT4/panel.md"; echo "the light site should meet the budget"; exit 1; }
+echo "budget passes the light page: ok"
+
+# budget-mode without Lighthouse pages is refused.
+if OUT="$(mktemp -d)" SITE_DIR=. BUDGET_MODE=absolute bash "$HERE/../scripts/web_ci.sh" > /dev/null 2>&1; then
+  echo "budget-mode without lighthouse-paths should fail"; exit 1
+fi
+echo "budget needs lighthouse-paths: ok"

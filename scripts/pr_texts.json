@@ -112,6 +112,60 @@
     "name": "Modern web",
     "means": "Old code that a native browser feature now does better.",
     "rigor": "warns"
+   },
+   {
+    "match": [
+     "Orçamento de desempenho: configuração",
+     "Performance budget: configuration"
+    ],
+    "name": "Budget: configuration",
+    "means": "The repository's web-budget.json. A limit looser than the kit's without a registered exception, or an expired exception, blocks the PR.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "LCP (laboratório)",
+     "LCP (lab)"
+    ],
+    "name": "LCP",
+    "means": "Time until the largest content shows, on a phone with a simulated slow network. Goal: up to 2.5 s.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "CLS (laboratório)",
+     "CLS (lab)"
+    ],
+    "name": "CLS",
+    "means": "How much the page jumps while loading (an image without a size, a banner pushing the text). Goal: up to 0.1.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "TBT (laboratório",
+     "TBT (lab"
+    ],
+    "name": "TBT",
+    "means": "Time the JavaScript freezes the page so it does not respond to a tap. Stands in for INP, which needs real users. Goal: up to 0.2 s.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Peso da página",
+     "Page weight"
+    ],
+    "name": "Page weight",
+    "means": "Everything the phone downloads to open the page (HTML, CSS, JS, fonts, images). Default: up to 1 MB.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "JavaScript (transferido)",
+     "JavaScript (transferred)"
+    ],
+    "name": "Page JavaScript",
+    "means": "How much JavaScript the page downloads. Default: up to 150 kB.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [
@@ -306,6 +360,60 @@
     "name": "Web moderna",
     "means": "Código antigo que um recurso nativo do navegador faz melhor hoje.",
     "rigor": "warns"
+   },
+   {
+    "match": [
+     "Orçamento de desempenho: configuração",
+     "Performance budget: configuration"
+    ],
+    "name": "Orçamento: configuração",
+    "means": "O arquivo web-budget.json do repositório. Limite mais frouxo que o do kit sem exceção registrada, ou exceção vencida, barra o PR.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "LCP (laboratório)",
+     "LCP (lab)"
+    ],
+    "name": "LCP",
+    "means": "Tempo até aparecer o maior conteúdo da página, num celular com rede lenta simulada. Meta: até 2,5 s.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "CLS (laboratório)",
+     "CLS (lab)"
+    ],
+    "name": "CLS",
+    "means": "Quanto a página pula enquanto carrega (imagem sem tamanho, anúncio que empurra o texto). Meta: até 0,1.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "TBT (laboratório",
+     "TBT (lab"
+    ],
+    "name": "TBT",
+    "means": "Tempo em que o JavaScript trava a página e ela não responde ao toque. Medido no lugar do INP, que só existe com gente usando. Meta: até 0,2 s.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Peso da página",
+     "Page weight"
+    ],
+    "name": "Peso da página",
+    "means": "Tudo o que o celular baixa para abrir a página (HTML, CSS, JS, fontes, imagens). Padrão: até 1 MB.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "JavaScript (transferido)",
+     "JavaScript (transferred)"
+    ],
+    "name": "JavaScript da página",
+    "means": "Quanto JavaScript a página baixa. Padrão: até 150 kB.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [

@@ -14,6 +14,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Broken links | linkinator on the built site (only the site's own links) | `site-dir` (`links-skip-paths` for files that live outside it on the real site) |
 | Lighthouse: performance, accessibility, best practices, SEO | Lighthouse CI, median of 3 runs per page | `lighthouse-paths` |
 | Accessibility (axe) | the axe-core rules inside Lighthouse's accessibility audit | `lighthouse-paths` |
+| Performance budget (phone, slow network) | `scripts/budget.py` on the Lighthouse reports: lab LCP, CLS, TBT (stands in for INP), page weight and JS weight per page; limits in `web-budget.json` | `budget-mode`, `budget-file` |
 | Bundle size | sum of `.js` and `.css`, gzip, with a limit | `bundle-dir`, `bundle-max-kb` |
 | Vulnerable dependencies | `npm audit` on each lockfile | `audit-dirs` |
 | Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
@@ -32,6 +33,23 @@ The numbers of the last green run on the default branch are the reference (artif
 - a test failed, or fewer tests pass.
 
 Lighthouse scores move a few points between runs of the same code, so they only warn (🟡 below 90 or more than 5 points below main). The modern-web check only warns. The first run, and any check main did not have yet, is a baseline: it shows what is bad and never fails. `fail-on-worse: "false"` turns the whole step into a report.
+
+## Performance budget (`budget-mode`)
+
+Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulated "Slow 4G", 4x CPU); a report taken any other way is an error, since desktop numbers say nothing about real visitors. Per page, median of the runs:
+
+| Limit | Kit default | Key |
+|---|---|---|
+| Largest Contentful Paint | 2.5 s | `lcp_ms` |
+| Cumulative Layout Shift | 0.1 | `cls` |
+| Total Blocking Time (lab stand-in for INP) | 200 ms | `tbt_ms` |
+| Page weight, transferred | 1024 kB | `page_kb` |
+| JavaScript, transferred | 150 kB | `js_kb` |
+
+- `budget-mode: absolute` (new sites): any page over a limit fails, on every run, even the first and even with `fail-on-worse: "false"`.
+- `budget-mode: baseline` (a site migrating to the budget): a page over a limit fails only when it is new or worse than on main beyond the lab noise; the panel shows how far each page is from the goal and says when to switch to `absolute`.
+
+`web-budget.json` at the repository root (`templates/web-budget.json`) may only make limits **stricter**. A looser limit is an `exceptions` entry with `limit`, `value`, `reason`, `approved_by`, `date` and, ideally, `expires` and `pages`; without one, or once it expires, the configuration error fails the job in any mode.
 
 The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
 
@@ -67,6 +85,7 @@ jobs:
           bundle-dir: app/dist
           bundle-max-kb: "300"
           audit-dirs: app api
+          budget-mode: absolute   # new site; "baseline" while migrating an old one
 ```
 
 The workflow must also run on `push` to the default branch, so main's numbers are saved. Dependabot: copy `templates/dependabot.yml`.
@@ -135,6 +154,6 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`). They run in `.github/workflows/check.yml`.
+`tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
 
 The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).
