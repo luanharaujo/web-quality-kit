@@ -197,6 +197,27 @@ expect("unhash: Vite hash with - and _", site_rules.unhash("assets/index-Bh-3x9a
        and site_rules.unhash("/assets/a-BhK3_a-Z.css?v=1") == "/assets/a.[hash].css?v=1", site_rules.unhash("assets/index-Bh-3x9aZ.js"))
 expect("unhash: Next.js long hex hash", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js")
        == "_next/static/chunks/main.[hash].js", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js"))
+# Name shapes of the build tools: two builds give the same identity.
+for one, two, want in (
+        ("_next/static/css/0123abcd4567ef89.css", "_next/static/css/fe98dc76ba543210.css", "_next/static/css/[hash].css"),
+        ("_next/static/media/e4af272ccee01ff0-s.p.woff2", "_next/static/media/a1b2c3d4e5f60718-s.p.woff2",
+         "_next/static/media/[hash]-s.p.woff2"),
+        ("_next/static/Xy3kP9qLm2Rt7Vw1Zb4Nc/_ssgManifest.js", "_next/static/Qa8sD2fGh5Jk1Lp9Mn3Bv/_ssgManifest.js",
+         "_next/static/[hash]/_ssgManifest.js"),
+        ("_app/immutable/chunks/DiwB1Obt.js", "_app/immutable/chunks/C7xq_a2P.js", "_app/immutable/chunks/[hash].js"),
+        ("_app/immutable/nodes/0.DiwB1Obt.js", "_app/immutable/nodes/0.C7xq_a2P.js", "_app/immutable/nodes/0.[hash].js"),
+        ("_astro/photo.DdKsxaZq_Z1abc.webp", "_astro/photo.Bh3x9aZq_Z1abc.webp", "_astro/photo.[hash]_Z1abc.webp"),
+        ("assets/inter-latin-400-normal-C38fXH4l.woff", "assets/inter-latin-400-normal-BhK3_a-Z.woff",
+         "assets/inter-latin-400-normal.[hash].woff")):
+    got = (site_rules.unhash(one), site_rules.unhash(two))
+    expect(f"two builds, one identity: {want}", got == (want, want), got)
+for name in ("assets/photo-sunset-beach.png", "assets/photo-mountain-view.png", "assets/x-mountain.png",
+             "assets/Inter-SemiBold.woff2", "assets/photo-IMG_1234.webp", "assets/logo-v2-final.svg",
+             "assets/hero-1280x720.webp", "assets/hero-img-800w.png", "assets/e2e-test.js"):
+    expect(f"a plain name in assets/ keeps its name and is not hashed: {name}",
+           site_rules.unhash(name) == name and not site_rules.is_hashed(name, []), site_rules.unhash(name))
+expect("assets/ declared as a hashed folder: the folder decides",
+       site_rules.is_hashed("assets/photo-sunset-beach.png", [], site_rules.HASHED_DIRS + ("assets/",)), "")
 expect("unhash leaves other folders alone", site_rules.unhash("img/logo-whatsapp2.webp") == "img/logo-whatsapp2.webp", "")
 
 # CSS edge cases: comments, data: URIs, two src, line numbers.
