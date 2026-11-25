@@ -231,6 +231,9 @@ route once per run:
 | slow server | a second tap right away reaches the server once, or both requests carry the same `Idempotency-Key` | a double tap must not book twice |
 | slow server | no success words ("booked", "paid", "saved"...) before the server answers, unless the route is listed in `optimistic` | someone else may have taken the slot |
 | failing network | an error in `role=alert` with a "try again" button; what the person typed or chose is still there; "try again" sends again | never make them start over |
+| slow server, reads (GET) | within 400 ms of a held read the page shows `aria-busy` (a skeleton marks its region busy) or a visible `role=status` or progress bar; never a blank screen | a still, empty screen looks broken |
+| slow server, reads | the same read (URL and body) is not sent twice for one page load or one action | wasted requests and flicker |
+| after each test | a 7-letter word typed into every search field (`type=search`, `role=searchbox`, `role=combobox`) sends at most 2 reads | debounce: a read per key floods the server |
 | uploads | a progress bar with a value (`role=progressbar` + `aria-valuenow`, or `<progress value>`), one per file; the drop zone reacts to `dragenter`; after the answer, a thumbnail or the file type and size; one failed file does not stop the others and keeps its own retry without choosing the file again | a spinner hides the truth; a file name is not proof |
 
 Server side, a contract test per write route:
@@ -250,7 +253,8 @@ repository's `routes-command`) and every route needs an end-to-end pass
 through the checks and a passing contract. Write handlers the scan cannot
 name are counted too, so they cannot hide. `interaction.json` (template in
 `templates/`) holds the exceptions, each with a reason: `optimistic`,
-`no_ui` (webhooks: contract only) and `exclude`. The success and retry
+`no_ui` (webhooks: contract only), `duplicate_reads_ok` (polling),
+`no_loading_state` (background reads) and `exclude`. The success and retry
 words are English by default; an app in another language sets `success` and
 `retry` (regular expressions) in `interaction.json`, listing its own words and
 the English ones, since each key replaces the whole default pattern.

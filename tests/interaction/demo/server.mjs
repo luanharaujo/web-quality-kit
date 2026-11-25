@@ -32,6 +32,9 @@ const server = http.createServer((req, res) => {
       if (key) answers.set(page + key, answer);
       return send(res, 201, answer);
     }
+    if (/^\/api\/[a-z-]+\/(items|search)$/.test(url.pathname) && req.method === 'GET') {
+      return send(res, 200, ['Handstand basics', 'Partner balance', 'Flexibility']);
+    }
     m = url.pathname.match(/^\/api\/([a-z-]+)\/uploads$/);
     if (m && req.method === 'POST') return send(res, 201, { ok: true, bytes: body.length });
     if (url.pathname === '/api/test/count') return send(res, 200, { n: records.get(url.searchParams.get('page')) || 0 });

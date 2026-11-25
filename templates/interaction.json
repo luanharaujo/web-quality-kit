@@ -5,5 +5,11 @@
   "no_ui": [
     { "route": "POST /webhooks/sync", "reason": "webhook, no screen: only the idempotency contract applies" }
   ],
+  "duplicate_reads_ok": [
+    { "route": "GET /api/status", "reason": "polled every 30 s on purpose" }
+  ],
+  "no_loading_state": [
+    { "route": "GET /api/prefetch", "reason": "prefetch in the background, no screen waits for it" }
+  ],
   "exclude": []
 }
