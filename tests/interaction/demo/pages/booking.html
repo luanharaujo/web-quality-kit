@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><title>Booking demo</title></head>
 <body>
 <!-- ?v=good | good-reads (two slow reads, then the write) | good-key (reads, then a write guarded only by its Idempotency-Key)
-     | good-bg (a draft saved in the background 2.5 s after the tap) | bad-busy | bad-double | bad-optimistic | bad-error -->
+     | good-bg (a draft saved in the background 2.5 s after the tap) | bad-busy | bad-double | bad-optimistic | bad-error | bad-request-id -->
 <form id="f">
   <label>Name <input name="name" id="name"></label>
   <button type="submit" id="go">Book</button>
@@ -38,6 +38,10 @@ async function book() {
   if (v !== 'bad-double') key = key || crypto.randomUUID();
   const headers = { 'content-type': 'application/json' };
   if (key) headers['Idempotency-Key'] = key;
+  // one id per attempt, sent to the server and shown in the error
+  const rid = v === 'bad-request-id' ? '' : crypto.randomUUID();
+  if (rid) headers['x-request-id'] = rid;
+  const code = rid ? ` (error code: ${rid})` : '';
   try {
     if (v === 'good-reads' || v === 'good-key') { // look up the slot first: the write leaves well after the tap
       await fetch(`/api/${v}/slots`);
@@ -51,9 +55,9 @@ async function book() {
     status.textContent = '';
     if (v === 'bad-error') {
       form.reset();
-      err.innerHTML = '<p role="alert">Error.</p>';
+      err.innerHTML = `<p role="alert">Error${code}.</p>`;
     } else {
-      err.innerHTML = '<div role="alert">Could not book. <button type="button" id="retry">Try again</button></div>';
+      err.innerHTML = `<div role="alert">Could not book${code}. <button type="button" id="retry">Try again</button></div>`;
       document.getElementById('retry').onclick = () => book();
     }
   } finally {

@@ -24,14 +24,16 @@ function failures(entries, type) {
 const EXPECTED = {
   slow: {
     good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
-    'upload-good': [], 'upload-bad': ['upload-confirm', 'upload-dropzone', 'upload-progress'],
+    'upload-good': [], 'upload-bad': ['request-id', 'upload-confirm', 'upload-dropzone', 'upload-progress'],
+    'bad-request-id': ['request-id'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
     'list-readonly': [], 'list-hidden': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'], 'list-mocked': [],
     'list-excluded': null, // excluded: must never be checked
   },
   fail: {
     good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'bad-busy': [], 'bad-double': [], 'bad-optimistic': [], 'bad-error': ['error-keeps-input', 'error-retry'],
-    'upload-good': [], 'upload-bad': ['error-alert', 'error-retry', 'upload-independent'],
+    'upload-good': [], 'upload-bad': ['error-alert', 'error-code', 'error-retry', 'upload-independent'],
+    'bad-request-id': ['error-code'],
   },
   contract: { good: [], 'bad-double': ['contract'] },
 };

@@ -30,6 +30,8 @@ function sendOne(file, row) {
     const bar = row.querySelector('.bar');
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/upload-${v}/uploads`);
+    const rid = v === 'good' ? crypto.randomUUID() : '';
+    if (rid) xhr.setRequestHeader('x-request-id', rid);
     if (bar && bar.tagName === 'PROGRESS') xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.value = Math.round(100 * e.loaded / e.total); };
     xhr.onload = () => {
       if (v === 'good') {
@@ -42,7 +44,7 @@ function sendOne(file, row) {
     };
     xhr.onerror = () => {
       if (v === 'good') {
-        row.querySelector('.msg').innerHTML = '<span role="alert">Failed.</span> <button type="button">Try again</button>';
+        row.querySelector('.msg').innerHTML = `<span role="alert">Failed (error code: ${rid}).</span> <button type="button">Try again</button>`;
         row.querySelector('.msg button').onclick = () => { row.querySelector('.msg').textContent = ''; sendOne(file, row); };
       }
       resolve(false);
