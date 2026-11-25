@@ -94,7 +94,7 @@ def scan_routes(cfg, root):
         except ImportError:
             raise RuntimeError("no route scanner: set routes_command in server-queries.json")
         dirs = [os.path.join(root, d) for d in cfg.get("source", [])]
-        res = interaction_gate.scan(dirs)
+        res = interaction_gate.scan(dirs, methods=("GET",))
         where = res.get("where", {})
         found = {route_key(r): where.get(r, "") for r in res.get("routes", [])}
     return {k: v for k, v in found.items() if k.startswith("GET ")}
