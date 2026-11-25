@@ -278,6 +278,8 @@ route once per run:
 | slow server (2 s) | within 400 ms of the tap the control is `disabled`/`aria-disabled` with `aria-busy`, or a `role=status`/`aria-live` region says what is happening | past 400 ms a still screen looks frozen and people tap again (Doherty threshold) |
 | slow server | a second tap right away reaches the server once, or both requests carry the same `Idempotency-Key` | a double tap must not book twice |
 | slow server | no success words ("booked", "paid", "saved"...) before the server answers, unless the route is listed in `optimistic` | someone else may have taken the slot |
+| slow server | every write carries an `x-request-id` (8 to 64 of `A-Z a-z 0-9 _ -`), made in the page per attempt | the server keeps the caller's id in its log (`observe.ts`), so one id finds the request |
+| failing network | the error in `role=alert` shows that request's id ("error code: ...") | support finds the request in the log from what the person reads out |
 | failing network | an error in `role=alert` with a "try again" button; what the person typed or chose is still there; "try again" sends again | never make them start over |
 | slow server, reads (GET) | within 400 ms of a read (reads are never held or slowed) something new says "loading": `aria-busy` turned on (a skeleton marks its region busy), new text in a `role=status`, or a progress bar appears; a status that was already there does not count | a still, empty screen looks broken |
 | slow server, reads | the same read (URL and body) is not sent again within 3 s for one page load or one action (a tap, a typed or chosen value); a retry after a failed read is fine | wasted requests and flicker |

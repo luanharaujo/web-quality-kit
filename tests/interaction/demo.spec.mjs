@@ -3,7 +3,7 @@
 // breaks); the good pages must pass everything.
 import { test, expect, expectIdempotent } from 'web-quality-kit-interaction';
 
-const bookings = ['good', 'good-reads', 'good-key', 'good-bg', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error'];
+const bookings = ['good', 'good-reads', 'good-key', 'good-bg', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error', 'bad-request-id'];
 
 for (const v of bookings) {
   test(`booking ${v}`, async ({ page }) => {

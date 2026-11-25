@@ -40,6 +40,7 @@ export { expectIdempotent } from './contract.mjs';
 export { routeKey, keyMatches, normalizePath } from './routes.mjs';
 export { settings, report } from './report.mjs';
 
+const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROBE = fs.readFileSync(path.join(HERE, 'probe.js'), 'utf8');
 
@@ -262,6 +263,12 @@ class Interaction {
       this.pass(key, 'double', 'second tap sent nothing');
     }
 
+    // 4. request id: every write carries x-request-id, so the error the person
+    // sees can be found in the server's log
+    const noId = hold.filter((r) => !REQUEST_ID.test(r.headers()['x-request-id'] || ''));
+    if (noId.length) this.fail(key, 'request-id', `the request has no valid x-request-id (8 to 64 of A-Z a-z 0-9 _ -): make one in the page for each write and send it, so the error message can show it`);
+    else this.pass(key, 'request-id');
+
     // 3. no success before the server answers
     if (state && state.newSuccess > 0 && !listed(cfg.optimistic, key)) {
       this.fail(key, 'optimistic', `success shown before the server answered ("${state.successSample}"); only routes listed in interaction.json "optimistic" may do that`);
@@ -323,6 +330,15 @@ class Interaction {
     }
     if (!alertOk) this.fail(key, 'error-alert', 'when the network failed no error showed in role=alert');
     else this.pass(key, 'error-alert');
+    // the error shows the request's id, for support to find it in the log
+    const rid = request.headers()['x-request-id'] || '';
+    if (!REQUEST_ID.test(rid)) {
+      this.fail(key, 'error-code', 'the request had no x-request-id, so the error cannot show its code');
+    } else {
+      const texts = alertOk ? await alert.allInnerTexts().catch(() => []) : [];
+      if (texts.some((t) => t.includes(rid))) this.pass(key, 'error-code');
+      else this.fail(key, 'error-code', `the error in role=alert does not show the request's id (${rid}): add "error code: <id>" so support can find it in the log`);
+    }
     if (!retryOk) this.fail(key, 'error-retry', 'when the network failed there was no "try again" button');
     else this.pass(key, 'error-retry');
 
