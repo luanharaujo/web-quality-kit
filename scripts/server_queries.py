@@ -38,7 +38,20 @@ Config (server-queries.json, paths relative to the repository root):
                   interaction check's scanner (scripts/interaction_gate.py)
   migrations      folder of .sql migrations (index check; empty = off)
   exempt_tables   {"plans": "reason"} small-by-nature tables
-  baseline        {"routes": [...], "scans": [{"table": t, "sql": s}]}
+  pagination      {"param": "limit", "size": 10, "max": 50, "next_fields": [...],
+                  "items_field": "items"} (defaults shown; items_field default = the
+                  first list in the response)
+  fetch_timeout   {"max_ms": 10000, "internal_hosts": ["api.example.com"]}
+  baseline        {"routes": [...], "scans": [{"table": t, "sql": s}],
+                   "unpaged": ["GET /x"], "fetch": [{"file": f, "text": t}]}
+
+5. Pagination: each tested list route, with more rows than a page, called
+   with ?limit=size must return exactly size items and a next cursor/page;
+   with no limit it must stay at or under the cap. A route that fails is red
+   (baseline mode: tolerated if in baseline.unpaged, which may not grow).
+6. Time limit: every fetch to an external host needs a signal
+   (AbortSignal.timeout(ms) up to max_ms, or an AbortController); a binding
+   (env.X.fetch) and a relative URL are internal. Red, with baseline.fetch.
 """
 import argparse
 import base64
@@ -124,11 +137,11 @@ def run(cmd, root, what):
     return out.stdout
 
 
-def get(url, headers, timeout=30):
+def get(url, headers, timeout=30, body=False):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310: local server, http(s) only
-        r.read()
-        return r.status, r.headers
+        data = r.read()
+        return (r.status, r.headers, data) if body else (r.status, r.headers)
 
 
 class Server:
@@ -170,15 +183,19 @@ class Server:
         self.log.close()
 
 
+def headers_for(cfg, root, tmp, server):
+    if not cfg.get("headers_command"):
+        return {}
+    return json.loads(run(fill(cfg["headers_command"], tmp=tmp, port=server.port), root, "headers_command"))
+
+
 def measure(cfg, root, tmp, server, routes):
     """{route: {3: count, 30: count}} and the SQL seen, or errors."""
     counts = {r["route"]: {} for r in routes}
     errors, sql = [], set()
     for n in SIZES:
         run(fill(cfg["seed"], n=n, tmp=tmp), root, f"seed {n}")
-        headers = {}
-        if cfg.get("headers_command"):
-            headers = json.loads(run(fill(cfg["headers_command"], tmp=tmp, port=server.port), root, "headers_command"))
+        headers = headers_for(cfg, root, tmp, server)
         for r in routes:
             key = route_key(r["route"])
             path = r.get("path") or key.split(" ", 1)[1]
@@ -202,6 +219,80 @@ def measure(cfg, root, tmp, server, routes):
             if h.get("x-db-sql"):
                 sql.update(json.loads(base64.b64decode(h["x-db-sql"]).decode()))
     return counts, sorted(sql), errors
+
+
+# --- pagination --------------------------------------------------------------
+
+NEXT_FIELDS = ("next", "cursor", "next_cursor", "nextCursor", "next_page", "nextPage")
+
+
+def page_of(data, items_field=None, next_fields=NEXT_FIELDS):
+    """(items, next) of a list response: a bare JSON list has no next."""
+    body = json.loads(data)
+    if isinstance(body, list):
+        return body, None
+    if not isinstance(body, dict):
+        return None, None
+    items = body.get(items_field) if items_field else next((v for v in body.values() if isinstance(v, list)), None)
+    nxt = next((body[f] for f in next_fields if body.get(f) not in (None, "", False)), None)
+    return items, nxt
+
+
+def with_param(path, name, value):
+    return f"{path}{'&' if '?' in path else '?'}{name}={value}"
+
+
+def paging(cfg, root, tmp, server, routes, headers_for):
+    """Each list route, with more rows than one page: limit=size must return
+    exactly size items and a next cursor/page; no limit must stay at or under
+    the default cap. Returns {route: problem or ""}."""
+    p = cfg.get("pagination", {})
+    size, cap = int(p.get("size", 10)), int(p.get("max", 50))
+    param = p.get("param", "limit")
+    fields = tuple(p.get("next_fields", NEXT_FIELDS))
+    result = {}
+    for n, step in ((max(30, size * 2), "page"), (cap + 10, "cap")):
+        run(fill(cfg["seed"], n=n, tmp=tmp), root, f"seed {n}")
+        headers = headers_for()
+        for r in routes:
+            key = route_key(r["route"])
+            if result.get(key):
+                continue
+            path = r.get("path") or key.split(" ", 1)[1]
+            url = server.base + (with_param(path, param, size) if step == "page" else path)
+            try:
+                _, _, data = get(url, {**headers, **r.get("headers", {})}, body=True)
+                items, nxt = page_of(data, r.get("items_field") or p.get("items_field"), fields)
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                result[key] = f"{step}: {e}"
+                continue
+            if items is None:
+                result[key] = "the response has no list"
+            elif step == "page" and (len(items) != size or nxt is None):
+                result[key] = (f"{param}={size} with {n} rows returned {len(items)} items"
+                               + ("" if nxt is not None else " and no next cursor"))
+            elif step == "cap" and len(items) > cap:
+                result[key] = f"no {param} with {n} rows returned {len(items)} items (cap {cap})"
+            else:
+                result.setdefault(key, "")
+    return result
+
+
+# --- external calls ----------------------------------------------------------
+
+def fetch_cases(cfg, root):
+    """fetch to an external host without a time limit (tools/fetch_timeout.mjs)."""
+    src = cfg.get("source", [])
+    if not src:
+        return [], []
+    t = cfg.get("fetch_timeout", {})
+    cmd = ["node", os.path.join(KIT, "tools", "fetch_timeout.mjs"), root, "--max-ms", str(int(t.get("max_ms", 10000)))]
+    for h in t.get("internal_hosts", []):
+        cmd += ["--internal", h]
+    out = subprocess.run(cmd + ["--"] + src, capture_output=True, text=True)
+    if out.returncode:
+        raise RuntimeError(f"fetch_timeout.mjs failed: {out.stderr.strip()[-300:]}")
+    return json.loads(out.stdout), t
 
 
 # --- indexes -----------------------------------------------------------------
@@ -285,7 +376,8 @@ def leaks(root):
 
 def check(cfg, root):
     out = {"mode": cfg.get("mode", "absolute"), "routes": [], "uncovered": [], "baseline_routes": [],
-           "scans": [], "baseline_scans": [], "errors": [], "indexes": bool(cfg.get("migrations"))}
+           "scans": [], "baseline_scans": [], "errors": [], "indexes": bool(cfg.get("migrations")),
+           "unpaged": [], "baseline_unpaged": [], "fetch": [], "baseline_fetch": []}
     err = out["errors"]
     if out["mode"] not in ("absolute", "baseline"):
         err.append(f"mode must be absolute or baseline, not {out['mode']!r}")
@@ -315,6 +407,15 @@ def check(cfg, root):
             continue
         (out["baseline_routes"] if key in tolerated else out["uncovered"]).append({"route": key, "where": found[key]})
 
+    baseline_mode = out["mode"] == "baseline"
+    try:
+        cases, _ = fetch_cases(cfg, root)
+        known = {(c["file"], c["text"]) for c in base.get("fetch", [])} if baseline_mode else set()
+        for c in cases:
+            (out["baseline_fetch"] if (c["file"], c["text"]) in known else out["fetch"]).append(c)
+    except (RuntimeError, ValueError) as e:
+        err.append(str(e))
+
     if not cfg.get("routes"):
         return out
     tmp = tempfile.mkdtemp(prefix="db-queries-")
@@ -324,6 +425,11 @@ def check(cfg, root):
         server = Server(cfg, root, tmp)
         counts, sql, errors = measure(cfg, root, tmp, server, cfg["routes"])
         err.extend(errors)
+        pages = paging(cfg, root, tmp, server, cfg["routes"], lambda: headers_for(cfg, root, tmp, server))
+        paged_ok = {route_key(k) for k in base.get("unpaged", [])} if baseline_mode else set()
+        for key, problem in sorted(pages.items()):
+            if problem:
+                (out["baseline_unpaged"] if key in paged_ok else out["unpaged"]).append({"route": key, "problem": problem})
     except (RuntimeError, KeyError, json.JSONDecodeError) as e:
         err.append(f"server: {e}")
         return out

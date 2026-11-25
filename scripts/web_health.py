@@ -313,7 +313,9 @@ WARN_ONLY = {"modern", "query_loop"}
 SERVER_LABELS = {"config": "Database check: configuration",
                  "n1": "Database queries per list (3 vs 30 rows)",
                  "uncovered": "List routes without the 3-vs-30 test",
-                 "scans": "Missing index (full table scan)"}
+                 "scans": "Missing index (full table scan)",
+                 "unpaged": "List routes without pagination",
+                 "fetch": "External call without a time limit"}
 
 
 # Lab numbers move a little between runs of the same code; in baseline mode a
@@ -434,6 +436,8 @@ def server_rows(s, bs, row, details):
         details += ["", "</details>", ""]
 
     def ident(item):
+        if "file" in item:
+            return (item["file"], item["text"])
         return item.get("route") or (item.get("table"), item.get("sql"))
 
     def tolerated(name, label, items, base_items, fmt):
@@ -460,6 +464,12 @@ def server_rows(s, bs, row, details):
     if s.get("indexes"):
         tolerated("baseline_scans", SERVER_LABELS["scans"], s["scans"], s["baseline_scans"],
                   lambda x: f"`{x['table']}`: {x['plan']} · `{x['sql'][:120]}`")
+    if "unpaged" in s and s["routes"]:
+        tolerated("baseline_unpaged", SERVER_LABELS["unpaged"], s["unpaged"], s["baseline_unpaged"],
+                  lambda r: f"`{r['route']}`: {r.get('problem', '')}")
+    if s.get("fetch") or s.get("baseline_fetch"):
+        tolerated("baseline_fetch", SERVER_LABELS["fetch"], s["fetch"], s["baseline_fetch"],
+                  lambda c: f"`{c['file']}:{c['line']}` {c['rule']} · `{c['text'][:100]}`")
     return hard
 
 

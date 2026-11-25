@@ -70,5 +70,7 @@
  "checks failing (busy state, double tap, early success, error and retry, upload, contract)": "verificações falhando (ocupado, toque duplo, sucesso antes da hora, erro e tentar de novo, upload, contrato)",
  "write handlers the scan could not name (give them a route table or use routes-command)": "pontos de gravação que a varredura não conseguiu nomear (tabela de rotas ou routes-command)",
  "writes seen in the tests that the route scan missed (counted as routes above)": "gravações vistas nos testes que a varredura de rotas não achou (contadas como rotas acima)",
- "No numbers from main: everything is the baseline this time (only warns).": "Sem números da main: tudo vira linha de base desta vez (só avisa)."
+ "No numbers from main: everything is the baseline this time (only warns).": "Sem números da main: tudo vira linha de base desta vez (só avisa).",
+ "List routes without pagination": "Rotas de lista sem paginação",
+ "External call without a time limit": "Chamada externa sem tempo limite"
 }

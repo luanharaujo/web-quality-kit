@@ -21,9 +21,16 @@
   },
   "migrations": "tests/cases/server/migrations_good",
   "source": [
-    "tests/cases/server/handlers_good.mjs"
+    "tests/cases/server/handlers_good.mjs",
+    "tests/cases/server/external_good.mjs"
   ],
   "exempt_tables": {
     "plans": "a handful of fixed rows"
+  },
+  "fetch_timeout": {
+    "max_ms": 10000,
+    "internal_hosts": [
+      "own.example.org"
+    ]
   }
 }
