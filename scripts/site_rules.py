@@ -58,23 +58,59 @@ FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net", "p
               "kit.fontawesome.com", "fonts.cdnfonts.com", "cdn.jsdelivr.net/npm/@fontsource")
 
 
-# Folders where build tools put only content-hashed files: Astro, Vite,
-# Next.js, SvelteKit. Guessing a hash from a name is not reliable (logo2025,
-# Inter-SemiBold and Vite hashes with "-" all fool it), so the folder decides;
-# others are added with "cache": {"hashed_dirs": [...]} or hashed_extra.
-HASHED_DIRS = ("_astro/", "assets/", "_next/static/", "_app/immutable/")
-# The build hash in a hashed file's name: Astro name.HASH.ext, Vite name-HASH.ext
-# (8 URL-safe base64 characters, "-" and "_" included), Next.js longer hex.
-HASH_TOKEN = re.compile(r"[.-][A-Za-z0-9_-]{8,}(?=\.[A-Za-z0-9]+$)")
+# Folders that only a build tool writes (Astro, Next.js, SvelteKit): every
+# file there is content-hashed, so the folder decides. Others are added with
+# "cache": {"hashed_dirs": [...]} or hashed_extra.
+HASHED_DIRS = ("_astro/", "_next/static/", "_app/immutable/")
+# assets/ is Vite's output, but also a plain folder in hand-written sites (and
+# Vite's public/assets/): there the name itself must carry a hash. A year of
+# immutable cache on a file that keeps its name cannot be undone in a browser.
+MIXED_DIRS = ("assets/",)
+
+# Next.js: 16 or more hex digits, and the build id folder.
+HEX_HASH = re.compile(r"(^|[-.])[0-9a-f]{16,}(?=[-.])")
+BUILD_ID = re.compile(r"(?<=_next/static/)(?!chunks/|css/|media/)[A-Za-z0-9_-]{16,}(?=/)")
+# 8 URL-safe base64 characters: Astro and SvelteKit name.HASH.ext (Astro images
+# add _suffix), Vite name-HASH.ext, SvelteKit chunks HASH.ext.
+SHORT_HASH = (re.compile(r"(\.)([A-Za-z0-9_-]{8})(?=(?:_[A-Za-z0-9_-]+)?\.[A-Za-z0-9]+$)"),
+              re.compile(r"(-)([A-Za-z0-9_-]{8})(?=\.[A-Za-z0-9]+$)"),
+              re.compile(r"(^)([A-Za-z0-9_-]{8})(?=\.[A-Za-z0-9]+$)"))
+# A hash mixes upper and lower case (sizes like 1280x720 or 800w do not) and
+# is not made of pieces that read as words, numbers or camera names.
+WORD = re.compile(r"[A-Z]?[a-z]*|[A-Z]+|\d+|[A-Z]?[a-z]+\d+|(?:[A-Z]?[a-z]{2,})(?:[A-Z][a-z]{2,})*\d*")
+
+
+def looks_hashed(token):
+    if not (re.search(r"[A-Z]", token) and re.search(r"[a-z]", token)):
+        return False
+    return not all(WORD.fullmatch(piece) for piece in re.split(r"[-_]", token))
+
+
+def unhash_name(name):
+    """The file name with its build hash replaced by [hash]; the rest stays."""
+    new = HEX_HASH.sub(lambda m: (".[hash]" if m.group(1) else "[hash]"), name)
+    if new != name:
+        return new
+    for pattern in SHORT_HASH:
+        for m in pattern.finditer(name):
+            if looks_hashed(m.group(2)):
+                mark = ".[hash]" if m.group(1) else "[hash]"
+                return name[:m.start()] + mark + name[m.end():]
+    return name
+
+
+def in_dirs(rel, dirs):
+    return any(("/" + d) in ("/" + rel) for d in dirs)
 
 
 def is_hashed(rel, extra, dirs=HASHED_DIRS):
     rel = rel.replace(os.sep, "/").lstrip("/")
     if not rel.lower().endswith(HASHABLE):
         return False
-    if any(re.search(p, rel) for p in extra):
+    if any(re.search(p, rel) for p in extra) or in_dirs(rel, dirs):
         return True
-    return any(rel.startswith(d) or ("/" + d) in ("/" + rel) for d in dirs)
+    name = rel.rsplit("/", 1)[-1]
+    return in_dirs(rel, MIXED_DIRS) and unhash_name(name) != name
 
 
 def unhash(text, dirs=HASHED_DIRS):
@@ -82,10 +118,11 @@ def unhash(text, dirs=HASHED_DIRS):
     becomes [hash], so "never worse" compares cases, not hashes."""
     def one(m):
         url = m.group(0)
-        if not any(d in url for d in dirs):
+        if not any(d in url for d in dirs + MIXED_DIRS):
             return url
-        base, _, q = url.partition("?")
-        return HASH_TOKEN.sub(".[hash]", base) + (("?" + q) if q else "")
+        path, mark, query = url.partition("?")
+        folder, slash, name = BUILD_ID.sub("[hash]", path).rpartition("/")
+        return folder + slash + unhash_name(name) + mark + query
     return re.sub(r"[^\s'\"()|,]+", one, text)
 
 
