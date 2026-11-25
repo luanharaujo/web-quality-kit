@@ -36,7 +36,7 @@ Lighthouse scores move a few points between runs of the same code, so they only 
 
 ## Performance budget (`budget-mode`)
 
-Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulated "Slow 4G", 4x CPU); a report taken any other way is an error, since desktop numbers say nothing about real visitors. Per page, median of the runs:
+Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulated "Slow 4G", 4x CPU); a report taken any other way is an error, since desktop numbers say nothing about real visitors. These settings are passed on every Lighthouse run; they were already Lighthouse's defaults, so existing scores stay the same. Per page, median of the runs:
 
 | Limit | Kit default | Key |
 |---|---|---|
