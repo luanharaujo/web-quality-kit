@@ -9,15 +9,26 @@
   },
   "seed": "bash api/scripts/seed_queries.sh {n}",
   "headers_command": "",
-  "source": ["api/src"],
+  "source": [
+    "api/src"
+  ],
   "routes": [
-    {"route": "GET /items"},
-    {"route": "GET /items/:id/comments", "path": "/items/1/comments"}
+    {
+      "route": "GET /items"
+    },
+    {
+      "route": "GET /items/:id/comments",
+      "path": "/items/1/comments"
+    }
   ],
   "exempt": {
     "GET /health": "no list"
   },
   "migrations": "api/migrations",
   "exempt_tables": {},
-  "baseline": {"routes": [], "scans": []}
+  "baseline": {
+    "routes": [],
+    "scans": []
+  },
+  "routes_command": "bash api/scripts/list_routes.sh"
 }

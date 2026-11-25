@@ -65,7 +65,8 @@ check("bad: red on the first run (a rule, not a comparison)", rc == 1 and out.co
 rc, _ = panel(bad, None, "--no-fail")
 check("bad: red even with --no-fail", rc == 1)
 rc, out = panel(bad, None, "--lang", "pt")
-check("bad: panel in Portuguese", "Consultas ao banco por lista" in out and "3 itens" in out, out)
+PT = json.load(open(os.path.join(S, "panel_pt.json")))
+check("bad: panel in Portuguese", PT["Database queries per list (3 vs 30 rows)"] in out, out)
 
 # --- baseline mode: tolerated today, never grows -------------------------------
 base_cfg = cfg("bad", mode="baseline", baseline={"routes": ["GET /products"],
@@ -88,7 +89,7 @@ rc, _ = panel(swapped, fixed)
 check("baseline: swapping a baseline route for another (same size) is red", rc == 1)
 check("baseline: a tested route that grows is red anyway", panel(old, old)[0] == 1)
 
-# --- the interaction scanner (1.8.0) finds the routes when no routes_command ---
+# --- the interaction scanner (scripts/interaction_gate.py, once it is in the kit) ---
 if os.path.exists(os.path.join(S, "interaction_gate.py")):
     c = cfg("bad")
     del c["routes_command"]
@@ -120,12 +121,12 @@ shutil.copytree(os.path.join(ROOT, "tests"), os.path.join(d, "tests"))
 os.makedirs(os.path.join(d, "templates", "server"))
 with open(os.path.join(ROOT, "templates", "server", "d1_queries.ts")) as f:
     open(os.path.join(d, "templates", "server", "d1_queries.ts"), "w").write(f.read() + "// changed\n")
-open(os.path.join(d, "wrangler.toml"), "w").write('[vars]\nQLD_QUERY_HEADER = "1"\n')
+open(os.path.join(d, "wrangler.toml"), "w").write('[vars]\nDB_QUERY_HEADERS = "1"\n')
 r = sq.check(cfg("good"), d)
 check("a changed counter copy is an error", any("differs" in e for e in r["errors"]), r["errors"])
-check("QLD_QUERY_HEADER in wrangler.toml is an error", any("wrangler.toml sets QLD_QUERY_HEADER" in e for e in r["errors"]), r["errors"])
+check("DB_QUERY_HEADERS in wrangler.toml is an error", any("wrangler.toml sets DB_QUERY_HEADERS" in e for e in r["errors"]), r["errors"])
 nohdr = sq.check(cfg("good", server=dict(cfg("good")["server"], start=cfg("good")["server"]["start"].replace("server.mjs", "server.mjs --no-header"))), ROOT)
-check("a server not wrapped by the counter is an error", any("no x-qld-queries" in e for e in nohdr["errors"]), nohdr["errors"])
+check("a server not wrapped by the counter is an error", any("no x-db-queries" in e for e in nohdr["errors"]), nohdr["errors"])
 
 node = subprocess.run(["node", os.path.join(CASES, "counter_check.mjs")], capture_output=True, text=True)
 for line in node.stdout.splitlines():

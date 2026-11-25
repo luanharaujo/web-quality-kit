@@ -62,12 +62,12 @@ export default { fetch: (req, env, ctx) => withQueryCount(req, env, (env) => han
 ```
 
 - **Production:** one JSON log line per request that touched the database, `{"event":"db_queries","method","route","status","queries","ms"}` (ids in the path become `:id`; no SQL).
-- **Local tests:** with `QLD_QUERY_HEADER=1` in `.dev.vars` and a request to localhost, the response carries `x-qld-queries` (count) and `x-qld-sql` (the distinct SQL, base64 JSON). Any other host never gets them. The variable in a `wrangler.*` config is an error.
+- **Local tests:** with `DB_QUERY_HEADERS=1` in `.dev.vars` and a request to localhost, the response carries `x-db-queries` (count) and `x-db-sql` (the distinct SQL, base64 JSON). Any other host never gets them. The variable in a `wrangler.*` config is an error.
 
 `server-queries.json` at the repository root (`templates/server-queries.json`) says how to start the local server, how to seed exactly `{n}` rows, and which routes are lists. The check:
 
 1. **N+1:** each list route is called with 3 and with 30 rows; the number of queries must be the same. Growing with the rows fails.
-2. **Coverage:** every GET route the route scanner finds (or `routes_command`) has that test, or is in `exempt` with a reason. `mode: absolute` (new repository): a route without the test fails. `mode: baseline` (old repository): the routes in `baseline.routes` are tolerated, and that list may not grow against main.
+2. **Coverage:** every GET route has that test. The routes come from `routes_command` (prints `METHOD /path` lines) or, when the kit has it, from the interaction check's route scanner (`scripts/interaction_gate.py`); with neither, the check fails with "no route scanner". A GET route that lists nothing goes in `exempt` with a reason. `mode: absolute` (new repository): a route without the test fails. `mode: baseline` (old repository): the routes in `baseline.routes` are tolerated, and that list may not grow against main.
 3. **Indexes:** the SQL of the tested requests goes through `EXPLAIN QUERY PLAN` on an in-memory SQLite with the repository's `migrations`. A full table scan where the query filters (`WHERE`) or joins, or an automatic index, fails, except for tables in `exempt_tables` (small by nature, with a reason) and, in baseline mode, the queries in `baseline.scans`.
 4. A database call inside `for`/`map`/`forEach` only warns (the 3-vs-30 test decides).
 
