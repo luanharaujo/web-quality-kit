@@ -64,8 +64,8 @@ FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net", "p
 # others are added with "cache": {"hashed_dirs": [...]} or hashed_extra.
 HASHED_DIRS = ("_astro/", "assets/", "_next/static/", "_app/immutable/")
 # The build hash in a hashed file's name: Astro name.HASH.ext, Vite name-HASH.ext
-# (8 URL-safe base64 characters, "-" and "_" included).
-HASH_TOKEN = re.compile(r"[.-][A-Za-z0-9_-]{8}(?=\.[A-Za-z0-9]+$)")
+# (8 URL-safe base64 characters, "-" and "_" included), Next.js longer hex.
+HASH_TOKEN = re.compile(r"[.-][A-Za-z0-9_-]{8,}(?=\.[A-Za-z0-9]+$)")
 
 
 def is_hashed(rel, extra, dirs=HASHED_DIRS):
