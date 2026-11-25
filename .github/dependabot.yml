@@ -32,9 +32,10 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: pip
     # tools/semgrep-requirements.txt is Semgrep's full lock (exact versions and
-    # hashes). Semgrep pins some dependencies exactly (mcp, opentelemetry-*), so
-    # bumping one of them alone can never install; only Semgrep itself is
-    # proposed, and its PR regenerates the whole file.
+    # hashes). Semgrep pins some dependencies exactly (mcp, opentelemetry-*) or
+    # to a range (wcmatch~=8.3), so bumping one of them alone can never
+    # install; only Semgrep itself is proposed, and its PR regenerates the
+    # whole file.
     directory: /tools
     schedule:
       interval: weekly
@@ -45,4 +46,5 @@ updates:
     ignore:
       - dependency-name: mcp
       - dependency-name: "opentelemetry-*"
+      - dependency-name: wcmatch
     open-pull-requests-limit: 1
