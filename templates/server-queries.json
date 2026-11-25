@@ -28,7 +28,18 @@
   "exempt_tables": {},
   "baseline": {
     "routes": [],
-    "scans": []
+    "scans": [],
+    "unpaged": [],
+    "fetch": []
   },
-  "routes_command": "bash api/scripts/list_routes.sh"
+  "routes_command": "bash api/scripts/list_routes.sh",
+  "pagination": {
+    "param": "limit",
+    "size": 10,
+    "max": 50
+  },
+  "fetch_timeout": {
+    "max_ms": 10000,
+    "internal_hosts": []
+  }
 }

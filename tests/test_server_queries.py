@@ -77,6 +77,7 @@ check("baseline: listed route tolerated", old["uncovered"] == [] and len(old["ba
 check("baseline: listed scan tolerated", old["scans"] == [] and len(old["baseline_scans"]) == 1, old)
 fixed = copy.deepcopy(old)
 fixed["routes"] = [dict(r, ok=True, large=r["small"]) for r in fixed["routes"]]
+fixed.update(unpaged=[], fetch=[])  # this part only looks at the routes and scans baselines
 rc, out = panel(fixed, fixed)
 check("baseline: same baseline as main passes (🟡)", rc == 0 and "🟡" in out, out)
 smaller = dict(fixed, baseline_routes=[])
@@ -96,6 +97,27 @@ if os.path.exists(os.path.join(S, "interaction_gate.py")):
     sc = sq.check(c, ROOT)
     check("scanner: untested GET route found with its file:line",
           [u["route"] for u in sc["uncovered"]] == ["GET /products"] and "handlers_bad.mjs" in sc["uncovered"][0]["where"], sc["uncovered"])
+
+# --- pagination and external calls (1.11.0) -------------------------------------
+check("good: lists paginate (limit, next cursor, cap)", good["unpaged"] == [], good["unpaged"])
+check("good: external calls all have a time limit or stay internal", good["fetch"] == [], good["fetch"])
+check("bad: lists without pagination caught", sorted(u["route"] for u in bad["unpaged"]) == ["GET /customers", "GET /orders"], bad["unpaged"])
+rules = [(c["line"], c["rule"]) for c in bad["fetch"]]
+check("bad: fetch without signal, URL in a variable, globalThis.fetch and a too-long timeout caught",
+      rules == [(3, "fetch-no-timeout"), (4, "fetch-no-timeout"), (5, "fetch-no-timeout"), (6, "fetch-timeout-too-long"), (7, "fetch-no-timeout")], rules)
+loose = sq.check(cfg("bad", fetch_timeout={"max_ms": 60000}), ROOT)
+check("fetch: max_ms is configurable", [c["line"] for c in loose["fetch"] if c["rule"] == "fetch-timeout-too-long"] == [], loose["fetch"])
+rc, out = panel(bad, None, "--lang", "pt")
+PT = json.load(open(os.path.join(S, "panel_pt.json")))
+check("bad: panel shows pagination and time limit rows",
+      PT["List routes without pagination"] in out and PT["External call without a time limit"] in out, out)
+fb = cfg("bad", mode="baseline", baseline={"unpaged": ["GET /orders", "GET /customers"],
+         "fetch": [{"file": c["file"], "text": c["text"]} for c in bad["fetch"]]})
+fbr = sq.check(fb, ROOT)
+check("baseline: unpaged routes and old fetch calls tolerated", fbr["unpaged"] == [] and fbr["fetch"] == []
+      and len(fbr["baseline_unpaged"]) == 2 and len(fbr["baseline_fetch"]) == 5, fbr)
+grown = dict(fbr, baseline_fetch=fbr["baseline_fetch"] + [{"file": "x.ts", "line": 1, "rule": "fetch-no-timeout", "text": "fetch(u)"}])
+check("baseline: a fetch added to the baseline against main is red", panel(grown, fbr)[0] == 1)
 
 # --- exemptions ------------------------------------------------------------------
 ex = sq.check(cfg("bad", exempt_tables={"orders": "fixed list of 10 rows"}), ROOT)

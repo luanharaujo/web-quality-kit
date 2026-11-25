@@ -242,6 +242,22 @@
     "name": "Database query inside a loop",
     "means": "A database call inside for/map/forEach: often one query per item. Only a hint; the 3-vs-30 test is what decides.",
     "rigor": "warns"
+   },
+   {
+    "match": [
+     "without pagination"
+    ],
+    "name": "List routes without pagination",
+    "means": "With more rows than one page, each list route called with a limit must return exactly that many items and a pointer to the next page, and without a limit it must stop at a cap (default 50). Otherwise one big list can take down the server.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "without a time limit"
+    ],
+    "name": "External call without a time limit",
+    "means": "Every call from the server to another site needs a time limit (default up to 10 s). Without one, a slow outside service holds every request that depends on it.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [
@@ -571,6 +587,24 @@
     "name": "Consulta ao banco dentro de laço",
     "means": "Uma chamada ao banco dentro de for/map/forEach: muitas vezes é uma consulta por item. Só dica; quem decide é o teste 3 x 30.",
     "rigor": "warns"
+   },
+   {
+    "match": [
+     "sem paginação",
+     "without pagination"
+    ],
+    "name": "Rotas de lista sem paginação",
+    "means": "Com mais itens que uma página, cada rota de lista chamada com limite tem que devolver exatamente esse número de itens e o ponteiro da próxima página; sem limite, tem que parar num teto (padrão 50). Senão, uma lista grande derruba o servidor.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "sem tempo limite",
+     "without a time limit"
+    ],
+    "name": "Chamada externa sem tempo limite",
+    "means": "Toda chamada do servidor a outro site precisa de tempo limite (padrão até 10 s). Sem isso, um serviço de fora lento segura todos os pedidos que dependem dele.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [
