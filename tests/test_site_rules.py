@@ -216,6 +216,21 @@ for name in ("assets/photo-sunset-beach.png", "assets/photo-mountain-view.png", 
              "assets/hero-1280x720.webp", "assets/hero-img-800w.png", "assets/e2e-test.js"):
     expect(f"a plain name in assets/ keeps its name and is not hashed: {name}",
            site_rules.unhash(name) == name and not site_rules.is_hashed(name, []), site_rules.unhash(name))
+hand = ["assets/logo.svg", "assets/hero.png", "assets/MyAvatar.png", "assets/iPhone12.png",
+        "assets/logo-LinkedIn.svg", "assets/20250101123000123.jpg", "assets/fb-1015812345678901-n.jpg"]
+expect("a hand-written assets/ is not build output", site_rules.mixed_dirs(hand) == (), hand)
+built = ["assets/index-Bh-3x9aZ.js", "assets/index-4e5f6a7b.css", "assets/inter-C38fXH4l.woff2",
+         "assets/hero-DdKsxaZq.webp", "assets/robots.svg"]
+expect("a Vite assets/ is build output, 8-digit hex included", site_rules.mixed_dirs(built) == ("assets/",)
+       and all(site_rules.is_hashed(f, []) for f in built[:4]) and not site_rules.is_hashed(built[4], []), built)
+for name in ("assets/20250101123000123.jpg", "assets/fb-1015812345678901-n.jpg"):
+    expect(f"a long number is not a hash: {name}", site_rules.unhash(name) == name, site_rules.unhash(name))
+expect("outside build output, names are left alone",
+       site_rules.unhash("assets/logo-McDonald.svg", mixed=()) == "assets/logo-McDonald.svg", "")
+for one, dirs in (("_astro/index.C7XQ4K2P.css", site_rules.HASHED_DIRS), ("_astro/index.abcdefgh.css", site_rules.HASHED_DIRS),
+                  ("static/main.8a3f2b1c.chunk.js", site_rules.HASHED_DIRS + ("static/",))):
+    expect(f"in a build folder the position is enough: {one}", "[hash]" in site_rules.unhash(one, dirs),
+           site_rules.unhash(one, dirs))
 expect("assets/ declared as a hashed folder: the folder decides",
        site_rules.is_hashed("assets/photo-sunset-beach.png", [], site_rules.HASHED_DIRS + ("assets/",)), "")
 expect("unhash leaves other folders alone", site_rules.unhash("img/logo-whatsapp2.webp") == "img/logo-whatsapp2.webp", "")
