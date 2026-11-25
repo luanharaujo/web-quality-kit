@@ -423,8 +423,14 @@ def server_rows(s, bs, row, details):
         details += [f"| {'🔴' if not r['ok'] else '🟢'} `{r['route']}` | {r['small']} | {r['large']} |" for r in s["routes"]]
         details += ["", "</details>", ""]
 
+    def ident(item):
+        return item.get("route") or (item.get("table"), item.get("sql"))
+
     def tolerated(name, label, items, base_items, fmt):
-        grew = bool(bs) and len(base_items) > len(bs.get(name, []))
+        # A baseline item main did not have = the baseline grew (swapping one
+        # item for another counts too, not only the size).
+        before = {ident(i) for i in bs.get(name, [])}
+        grew = bool(bs) and any(ident(i) not in before for i in base_items)
         ok = not items and not grew
         now = str(len(items))
         if base_items:

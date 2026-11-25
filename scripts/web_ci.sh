@@ -172,8 +172,9 @@ if [[ -n "${SERVER_QUERIES:-}" ]]; then
   python3 "$KIT/scripts/server_queries.py" check --config "$SERVER_QUERIES" --root "$PWD" > "$OUT/server_queries.json" \
     || { echo "::error::server_queries.py did not run"; exit 1; }
   args+=(--server-queries "$OUT/server_queries.json")
-  # shellcheck disable=SC2207
-  src=($(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("source", [])))' "$SERVER_QUERIES" 2>/dev/null))
+  src=()
+  while IFS= read -r d; do [[ -n "$d" ]] && src+=("$d"); done \
+    < <(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("source", [])))' "$SERVER_QUERIES" 2>/dev/null)
   if [[ ${#src[@]} -gt 0 ]]; then
     node "$KIT/tools/query_in_loop.mjs" "$PWD" "${src[@]}" > "$OUT/query_loop.json" \
       || { echo "::warning::query-in-loop lint failed"; echo '[]' > "$OUT/query_loop.json"; }

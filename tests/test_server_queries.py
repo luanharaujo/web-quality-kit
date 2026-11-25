@@ -83,6 +83,9 @@ rc, _ = panel(fixed, smaller)
 check("baseline: a route added to the baseline against main is red", rc == 1)
 rc, _ = panel(smaller, fixed)
 check("baseline: shrinking the baseline passes", rc == 0)
+swapped = dict(fixed, baseline_routes=[{"route": "GET /other", "where": ""}])
+rc, _ = panel(swapped, fixed)
+check("baseline: swapping a baseline route for another (same size) is red", rc == 1)
 check("baseline: a tested route that grows is red anyway", panel(old, old)[0] == 1)
 
 # --- exemptions ------------------------------------------------------------------
