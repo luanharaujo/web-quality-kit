@@ -183,6 +183,15 @@ r = subprocess.run([sys.executable, RULES, "check", mnt, "--mode", "absolute", "
                     "--mount", "/app/"], capture_output=True, text=True)
 expect("mounted site: patterns with the mount match", not json.loads(r.stdout)["cache"], r.stdout[:300])
 
+# Names that look like hashes but are not, and hashes without a digit.
+sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
+import site_rules  # noqa: E402
+for name in ("fonts/Inter-SemiBold.woff2", "fonts/Lato-ExtraBold.woff2", "img/foto-principal.webp",
+             "img/capa-larga-1400.avif", "favicon.svg"):
+    expect(f"not hashed: {name}", not site_rules.is_hashed(name, []), name)
+for name in ("_astro/index.DdKsxaZq.css", "assets/index-BhK3x9aZ.js", "_astro/hero.Qw12Er34.webp"):
+    expect(f"hashed: {name}", site_rules.is_hashed(name, []), name)
+
 # --- limits and exceptions ------------------------------------------------------
 strict = run(good_site(), config={"limits": {"img_px": 1000, "font_weights": 1}})
 expect("stricter img_px catches a 1200 px image", ("img-px", "_astro/hero.[hash].webp") in rules_of(strict), rules_of(strict))

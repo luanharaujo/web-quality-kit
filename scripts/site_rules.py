@@ -60,9 +60,14 @@ URL_RE = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)")
 
 
 def hash_seg(seg):
-    return len(seg) >= 8 and re.fullmatch(r"[A-Za-z0-9_]+", seg) and bool(
-        re.search(r"\d", seg) and re.search(r"[A-Za-z]", seg)
-        or re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg))
+    """8+ characters with a digit and a letter, or mixed case that is not a
+    CamelCase name (Inter-SemiBold, Lato-ExtraBold are names, not hashes)."""
+    if len(seg) < 8 or not re.fullmatch(r"[A-Za-z0-9_]+", seg):
+        return False
+    if re.search(r"\d", seg) and re.search(r"[A-Za-z]", seg):
+        return True
+    camel_words = re.fullmatch(r"(?:[A-Z][a-z]{2,})+", seg)
+    return bool(re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg)) and not camel_words
 
 
 HASH_IN_NAME = re.compile(r"(?<=[.-])([A-Za-z0-9_]{8,})(?=\.[A-Za-z0-9]+(?:[?#\s'\")]|$))")
