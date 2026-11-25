@@ -62,5 +62,13 @@
  "Fonts": "Fontes",
  "Images": "Imagens",
  "Site rules: configuration": "Regras do site: configuração",
- "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json)."
+ "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json).",
+ "Actions that save data": "Ações que gravam dados",
+ "write routes under the checks (e2e + contract)": "rotas de gravação sob as verificações (e2e + contrato)",
+ "write routes no end-to-end test went through": "rotas de gravação sem teste de ponta a ponta",
+ "write routes without an idempotency contract test": "rotas de gravação sem teste de contrato de idempotência",
+ "checks failing (busy state, double tap, early success, error and retry, upload, contract)": "verificações falhando (ocupado, toque duplo, sucesso antes da hora, erro e tentar de novo, upload, contrato)",
+ "write handlers the scan could not name (give them a route table or use routes-command)": "pontos de gravação que a varredura não conseguiu nomear (tabela de rotas ou routes-command)",
+ "writes seen in the tests that the route scan missed (counted as routes above)": "gravações vistas nos testes que a varredura de rotas não achou (contadas como rotas acima)",
+ "No numbers from main: everything is the baseline this time (only warns).": "Sem números da main: tudo vira linha de base desta vez (só avisa)."
 }

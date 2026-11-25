@@ -44,6 +44,32 @@ jobs:
       - name: Tool proofs (bad site caught)
         run: bash tests/test_collect.sh
 
+  # Interaction checks: the demo app's bad pages are caught, each by its rule;
+  # then the action itself on the demo (bad on purpose: it reports, never gates).
+  interaction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Chromium for the pinned Playwright
+        working-directory: interaction
+        run: |
+          npm ci --ignore-scripts --no-fund --no-audit --loglevel=error
+          node_modules/.bin/playwright install --with-deps chromium
+      - name: Interaction proofs
+        run: bash tests/test_interaction.sh
+      - uses: ./actions/interaction
+        with:
+          working-directory: tests/interaction
+          server-dirs: tests/interaction/demo
+          fail-on-worse: "false"
+
   # The action itself, as a repository would call it, on the bad site. On
   # main it saves the numbers; on a pull request it compares with them, so
   # the download of main's artifact is exercised too.

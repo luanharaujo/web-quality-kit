@@ -19,9 +19,18 @@ updates:
         applies-to: version-updates
         update-types: [minor, patch]
     open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    # Playwright for the interaction checks. When the self-hosted runner image
+    # has an older Chromium, the action downloads the matching one once.
+    directory: /interaction
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
   - package-ecosystem: github-actions
     # Workflows and the composite action the repositories run.
-    directories: ["/", "/actions/web-ci"]
+    directories: ["/", "/actions/web-ci", "/actions/interaction"]
     schedule:
       interval: weekly
     cooldown:

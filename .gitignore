@@ -3,3 +3,4 @@ __pycache__/
 .web-health/
 .lighthouseci/
 tests/cases/allow.tmp
+test-results/

@@ -1,0 +1,14 @@
+{
+  "name": "web-quality-kit-interaction",
+  "version": "1.8.0",
+  "private": true,
+  "description": "Playwright fixture and helpers that check every action that writes data: busy state, double tap, no optimistic success, error with retry, uploads, idempotent server.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "dependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}

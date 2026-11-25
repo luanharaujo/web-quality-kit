@@ -1,0 +1,173 @@
+# Interaction checks: every action that saves data answers the tap, survives
+# a double tap and a network failure, and the server is idempotent.
+#
+# The repository's end-to-end tests (Playwright) import `test` from
+# 'web-quality-kit-interaction' instead of '@playwright/test'; this action
+# links that package, runs the suite twice (slow server, then failing
+# network), lists the server's write routes and compares coverage with main.
+# See README "Interaction checks".
+#
+# Usage, in a job whose runner can start the app and the API:
+#   - uses: luanharaujo/web-quality-kit/actions/interaction@<sha> # vX.Y.Z
+#     with:
+#       working-directory: e2e
+#       server-dirs: api/src
+#       mode: baseline        # existing repo: what main has only warns
+name: Web interaction checks
+description: Busy state, double tap, no early success, error and retry, uploads, idempotent server, for every action that saves data.
+
+inputs:
+  working-directory:
+    description: Folder with the Playwright config (and interaction.json).
+    default: "."
+  config:
+    description: Playwright config file, relative to working-directory.
+    default: playwright.config.mjs
+  server-dirs:
+    description: Server code folders to scan for write routes, space separated (relative to the repository root).
+    default: ""
+  routes-command:
+    description: Command that prints the write routes, one "METHOD /path" per line (replaces the scan).
+    default: ""
+  mode:
+    description: '"new" = any gap is red; "baseline" = only something worse than main is red.'
+    default: new
+  failure-pass:
+    description: '"false" = skip the second run with a failing network.'
+    default: "true"
+  lang:
+    description: Panel language, "en" or "pt".
+    default: en
+  fail-on-worse:
+    description: '"false" = only report, never fail on the gate (failing end-to-end tests still fail).'
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install the interaction package (pinned Playwright)
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../interaction
+      run: npm ci --ignore-scripts --no-fund --no-audit --loglevel=error
+
+    - name: Browser
+      shell: bash
+      env:
+        PW: ${{ github.action_path }}/../../interaction/node_modules/.bin/playwright
+      run: |
+        # Uses the image's browsers (PLAYWRIGHT_BROWSERS_PATH) when they match
+        # this Playwright; otherwise downloads Chromium once to the tool cache.
+        if "$PW" install chromium >/dev/null 2>&1; then exit 0; fi
+        dir="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ms-playwright"
+        echo "PLAYWRIGHT_BROWSERS_PATH=$dir" >> "$GITHUB_ENV"
+        if [[ "${RUNNER_ENVIRONMENT:-}" == "github-hosted" ]]; then
+          PLAYWRIGHT_BROWSERS_PATH="$dir" "$PW" install --with-deps chromium
+        else
+          PLAYWRIGHT_BROWSERS_PATH="$dir" "$PW" install chromium
+        fi
+
+    - name: End-to-end tests under the checks
+      id: e2e
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        KIT_PKG: ${{ github.action_path }}/../../interaction
+        PW: ${{ github.action_path }}/../../interaction/node_modules/.bin/playwright
+        OUT: ${{ runner.temp }}/kit-interaction
+        CONFIG: ${{ inputs.config }}
+        FAILURE_PASS: ${{ inputs.failure-pass }}
+      run: |
+        mkdir -p node_modules "$OUT"
+        ln -sfn "$KIT_PKG" node_modules/web-quality-kit-interaction
+        export KIT_INTERACTION_ENFORCE=record
+        [[ -f interaction.json ]] && export KIT_INTERACTION_CONFIG="$PWD/interaction.json"
+        rc=0
+        KIT_INTERACTION_MODE=slow KIT_INTERACTION_REPORT_DIR="$OUT/slow" \
+          "$PW" test -c "$CONFIG" --output "$OUT/results-slow" || rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [[ "$FAILURE_PASS" == "true" ]]; then
+          # The network fails on purpose: the tests' own steps may break here;
+          # only the kit's checks count in this pass.
+          KIT_INTERACTION_MODE=fail KIT_INTERACTION_REPORT_DIR="$OUT/fail" \
+            "$PW" test -c "$CONFIG" --output "$OUT/results-fail" --reporter=dot >"$OUT/fail.log" 2>&1 || true
+        fi
+
+    - name: Write routes and coverage against main
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KIT: ${{ github.action_path }}/../..
+        OUT: ${{ runner.temp }}/kit-interaction
+        WD: ${{ inputs.working-directory }}
+        SERVER_DIRS: ${{ inputs.server-dirs }}
+        ROUTES_COMMAND: ${{ inputs.routes-command }}
+        MODE: ${{ inputs.mode }}
+        PANEL_LANG: ${{ inputs.lang }}
+        FAIL: ${{ inputs.fail-on-worse }}
+        WORKFLOW: ${{ github.workflow }}
+        MAIN: ${{ github.event.repository.default_branch }}
+        E2E_RC: ${{ steps.e2e.outputs.rc }}
+      run: |
+        export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+        if [[ -n "$ROUTES_COMMAND" ]]; then
+          bash -c "$ROUTES_COMMAND" > "$OUT/routes.txt"
+        else
+          read -ra dirs <<< "$SERVER_DIRS"
+          python3 "$KIT/scripts/interaction_gate.py" routes "${dirs[@]:-/nonexistent}" > "$OUT/routes.txt"
+        fi
+        cfg=()
+        [[ -f "$WD/interaction.json" ]] && cfg=(--config "$WD/interaction.json")
+        python3 "$KIT/scripts/interaction_gate.py" collect --routes "$OUT/routes.txt" \
+          --report "$OUT/slow" "$OUT/fail" "${cfg[@]}" > "$OUT/interaction.json"
+        base="-"
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          if ! command -v gh >/dev/null; then
+            echo "::error::gh (GitHub CLI) not found: it is needed to read main's numbers"
+            exit 1
+          fi
+          if ! ids=$(gh run list --workflow "$WORKFLOW" --branch "$MAIN" --status success --limit 10 \
+              --json databaseId -q '.[].databaseId'); then
+            echo "::error::Could not list the runs on $MAIN to compare"
+            exit 1
+          fi
+          for id in $ids; do
+            if gh run download "$id" --name interaction-health --dir "$OUT/base" >/dev/null 2>&1; then
+              base="$OUT/base/interaction.json"; break
+            fi
+          done
+          if [[ "$base" == "-" ]]; then
+            echo "::warning::No interaction numbers from $MAIN: this pull request is compared with nothing (baseline)"
+          fi
+        fi
+        flags=(--mode "$MODE" --lang "$PANEL_LANG")
+        [[ "$FAIL" == "true" ]] || flags+=(--no-fail)
+        rc=0
+        python3 "$KIT/scripts/interaction_gate.py" compare "$base" "$OUT/interaction.json" "${flags[@]}" \
+          > "$OUT/panel.md" || rc=$?
+        cat "$OUT/panel.md" >> "$GITHUB_STEP_SUMMARY"
+        if [[ "${E2E_RC:-0}" != "0" ]]; then
+          echo "::error::The end-to-end tests failed (slow-server pass): see the step above"
+          exit 1
+        fi
+        exit $rc
+
+    - name: Save the reports (to see what each check saw)
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: interaction-report-${{ github.job }}
+        path: |
+          ${{ runner.temp }}/kit-interaction/slow
+          ${{ runner.temp }}/kit-interaction/fail
+          ${{ runner.temp }}/kit-interaction/fail.log
+          ${{ runner.temp }}/kit-interaction/panel.md
+        if-no-files-found: ignore
+        retention-days: 7
+
+    - name: Save the numbers for main
+      if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: interaction-health
+        path: ${{ runner.temp }}/kit-interaction/interaction.json
+        retention-days: 90
