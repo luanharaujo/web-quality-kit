@@ -101,6 +101,9 @@ def load_config(path, today):
         if e["limit"] not in DEFAULTS:
             errors.append(f"{where}: unknown limit {e['limit']}")
             continue
+        if not isinstance(e["value"], (int, float)) or isinstance(e["value"], bool) or e["value"] < 0:
+            errors.append(f"{where}: value must be a number >= 0")
+            continue
         try:
             datetime.date.fromisoformat(str(e["date"]))
             expires = datetime.date.fromisoformat(str(e["expires"])) if e.get("expires") else None

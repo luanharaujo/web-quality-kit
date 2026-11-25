@@ -317,6 +317,9 @@ def budget_rows(b, bb, first, row, details):
     off like the other comparisons."""
     hard, soft = [], []
     absolute = b.get("mode") == "absolute"
+    # Main without budget numbers (the PR that turns the budget on) is a
+    # baseline for it, like any check main did not have yet.
+    first = first or bb is None
     base_pages = (bb or {}).get("pages") or {}
     if b.get("errors"):
         row(False, True, T("Performance budget: configuration"), str(len(b["errors"])), T("none"), "—")
