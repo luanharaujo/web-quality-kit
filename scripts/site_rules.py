@@ -64,7 +64,9 @@ def hash_seg(seg):
     CamelCase name (Inter-SemiBold, Lato-ExtraBold are names, not hashes)."""
     if len(seg) < 8 or not re.fullmatch(r"[A-Za-z0-9_]+", seg):
         return False
-    if re.search(r"\d", seg) and re.search(r"[A-Za-z]", seg):
+    if re.fullmatch(r"\d+x\d+(@\dx)?", seg):  # hero-1920x1080: a size, not a hash
+        return False
+    if re.search(r"\d", seg) and len(re.findall(r"[A-Za-z]", seg)) >= 2:
         return True
     camel_words = re.fullmatch(r"(?:[A-Z][a-z]{2,})+", seg)
     return bool(re.search(r"[a-z]", seg) and re.search(r"[A-Z]", seg)) and not camel_words
