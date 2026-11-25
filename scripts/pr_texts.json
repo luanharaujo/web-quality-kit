@@ -166,6 +166,46 @@
     "name": "Page JavaScript",
     "means": "How much JavaScript the page downloads. Default: up to 150 kB.",
     "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Database queries per list"
+    ],
+    "name": "Database queries per list",
+    "means": "Each list route is called with 3 and with 30 rows in a local database; the number of queries must stay the same. If it grows with the rows, the route makes one query per item (N+1) and gets slow in production.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "List routes without"
+    ],
+    "name": "List routes without the 3-vs-30 test",
+    "means": "Every server route that reads data needs that test or a written reason why it lists nothing. An old repository keeps its current list (baseline), which can only shrink.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Missing index"
+    ],
+    "name": "Missing index",
+    "means": "Every query seen in the tests goes through EXPLAIN QUERY PLAN with the repository's schema. Reading a whole table to find a few rows means an index is missing. Small tables can be exempted with a reason.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Database check: configuration"
+    ],
+    "name": "Database check: configuration",
+    "means": "The check itself could not run as configured: query counter not the kit's copy, counter header switched on in production config, or the local server did not answer.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Database query inside a loop"
+    ],
+    "name": "Database query inside a loop",
+    "means": "A database call inside for/map/forEach: often one query per item. Only a hint; the 3-vs-30 test is what decides.",
+    "rigor": "warns"
    }
   ],
   "glossary": [
@@ -414,6 +454,51 @@
     "name": "JavaScript da página",
     "means": "Quanto JavaScript a página baixa. Padrão: até 150 kB.",
     "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Consultas ao banco por lista",
+     "Database queries per list"
+    ],
+    "name": "Consultas ao banco por lista",
+    "means": "Cada rota que lista coisas é chamada com 3 e com 30 itens num banco local; o número de consultas tem que ser o mesmo. Se cresce com os itens, a rota faz uma consulta por item (N+1) e fica lenta em produção.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Rotas de lista sem",
+     "List routes without"
+    ],
+    "name": "Rotas de lista sem o teste 3 x 30",
+    "means": "Toda rota do servidor que lê dados precisa desse teste ou de um motivo escrito de que não lista nada. Repositório antigo guarda a lista de hoje (linha de base), que só pode diminuir.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Falta índice",
+     "Missing index"
+    ],
+    "name": "Falta índice",
+    "means": "Toda consulta vista nos testes passa pelo EXPLAIN QUERY PLAN com o esquema do repositório. Ler a tabela inteira para achar poucas linhas quer dizer que falta um índice. Tabela pequena por natureza pode ser isenta com motivo.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Banco: configuração",
+     "Database check: configuration"
+    ],
+    "name": "Banco: configuração da checagem",
+    "means": "A checagem não conseguiu rodar como está configurada: contador de consultas diferente do do kit, cabeçalho do contador ligado na configuração de produção, ou o servidor local não respondeu.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Consulta ao banco dentro de laço",
+     "Database query inside a loop"
+    ],
+    "name": "Consulta ao banco dentro de laço",
+    "means": "Uma chamada ao banco dentro de for/map/forEach: muitas vezes é uma consulta por item. Só dica; quem decide é o teste 3 x 30.",
+    "rigor": "warns"
    }
   ],
   "glossary": [

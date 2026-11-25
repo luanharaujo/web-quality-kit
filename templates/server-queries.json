@@ -1,0 +1,23 @@
+{
+  "mode": "absolute",
+  "counter": "api/src/d1_queries.ts",
+  "server": {
+    "start": "cd api && npx wrangler dev --local --ip 127.0.0.1 --port {port}",
+    "url": "http://127.0.0.1:{port}",
+    "ready": "/health",
+    "timeout": 120
+  },
+  "seed": "bash api/scripts/seed_queries.sh {n}",
+  "headers_command": "",
+  "source": ["api/src"],
+  "routes": [
+    {"route": "GET /items"},
+    {"route": "GET /items/:id/comments", "path": "/items/1/comments"}
+  ],
+  "exempt": {
+    "GET /health": "no list"
+  },
+  "migrations": "api/migrations",
+  "exempt_tables": {},
+  "baseline": {"routes": [], "scans": []}
+}

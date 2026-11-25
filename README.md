@@ -19,6 +19,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Vulnerable dependencies | `npm audit` on each lockfile | `audit-dirs` |
 | Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
 | Personal data and secrets | `scripts/data_guard.py`: CPF/CNPJ with valid check digits, mobile numbers, e-mails, data files, tokens. Values are never printed, only masked and hashed | `data-guard: "true"` (public repositories) |
+| Database of a server (N+1, routes, indexes) | `scripts/server_queries.py` against the local server, with the kit's query counter in the app; query-in-a-loop lint (`tools/query_in_loop.mjs`, warning only) | `server-queries` |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
 
 Tools are pinned in `tools/package-lock.json` and installed with `npm ci --ignore-scripts` (no install script of any dependency runs); a new tool version is a pull request here.
@@ -50,6 +51,27 @@ Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulate
 - `budget-mode: baseline` (a site migrating to the budget): a page over a limit fails only when it is new or worse than on main beyond the lab noise; the panel shows how far each page is from the goal and says when to switch to `absolute`.
 
 `web-budget.json` at the repository root (`templates/web-budget.json`) may only make limits **stricter**. A looser limit is an `exceptions` entry with `limit`, `value`, `reason`, `approved_by`, `date` and, ideally, `expires` and `pages`; without one, or once it expires, the configuration error fails the job in any mode.
+
+## Database of a server (`server-queries`)
+
+For a Cloudflare Worker with D1 (or any server that can wrap its database the same way). The app copies `templates/server/d1_queries.ts` unchanged and wraps its fetch handler:
+
+```ts
+import { withQueryCount } from './d1_queries'
+export default { fetch: (req, env, ctx) => withQueryCount(req, env, (env) => handle(req, env, ctx)) }
+```
+
+- **Production:** one JSON log line per request that touched the database, `{"event":"db_queries","method","route","status","queries","ms"}` (ids in the path become `:id`; no SQL).
+- **Local tests:** with `QLD_QUERY_HEADER=1` in `.dev.vars` and a request to localhost, the response carries `x-qld-queries` (count) and `x-qld-sql` (the distinct SQL, base64 JSON). Any other host never gets them. The variable in a `wrangler.*` config is an error.
+
+`server-queries.json` at the repository root (`templates/server-queries.json`) says how to start the local server, how to seed exactly `{n}` rows, and which routes are lists. The check:
+
+1. **N+1:** each list route is called with 3 and with 30 rows; the number of queries must be the same. Growing with the rows fails.
+2. **Coverage:** every GET route the route scanner finds (or `routes_command`) has that test, or is in `exempt` with a reason. `mode: absolute` (new repository): a route without the test fails. `mode: baseline` (old repository): the routes in `baseline.routes` are tolerated, and that list may not grow against main.
+3. **Indexes:** the SQL of the tested requests goes through `EXPLAIN QUERY PLAN` on an in-memory SQLite with the repository's `migrations`. A full table scan where the query filters (`WHERE`) or joins, or an automatic index, fails, except for tables in `exempt_tables` (small by nature, with a reason) and, in baseline mode, the queries in `baseline.scans`.
+4. A database call inside `for`/`map`/`forEach` only warns (the 3-vs-30 test decides).
+
+These are rules, not comparisons: they fail on the first run and with `fail-on-worse: "false"`.
 
 The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
 
@@ -86,6 +108,7 @@ jobs:
           bundle-max-kb: "300"
           audit-dirs: app api
           budget-mode: absolute   # new site; "baseline" while migrating an old one
+          server-queries: server-queries.json   # a server with a database
 ```
 
 The workflow must also run on `push` to the default branch, so main's numbers are saved. Dependabot: copy `templates/dependabot.yml`.
@@ -154,6 +177,6 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
+`tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
 
 The test cases in `tests/cases/` contain made-up personal data on purpose (the bad cases the guard must catch).

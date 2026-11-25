@@ -31,6 +31,17 @@ JS weight per page, phone on a slow network):
   - mode "baseline" (a site migrating to the budget): a page over a limit
     fails only when it is new or worse than on main beyond the noise margin
     (BUDGET_NOISE); the panel shows how far each page still is from the goal.
+
+Database of a server (--server-queries, from server_queries.py; always a rule,
+fails even on the first run and with --no-fail):
+  - a list route whose number of queries grows from 3 to 30 rows (N+1);
+  - a GET route with no 3-vs-30 test and no exemption (mode "baseline":
+    tolerated if listed in the repository's baseline, which may not grow);
+  - a full table scan or automatic index in EXPLAIN QUERY PLAN (missing
+    index), outside the exempt tables and the baseline (may not grow);
+  - a configuration error (counter differs from the kit's, the query header
+    switched on in a wrangler config, the server did not answer).
+A database query inside a loop (--query-loop) only warns.
 """
 import argparse
 import glob
@@ -225,6 +236,10 @@ def collect(a):
         m["modern"] = eslint_cases(a.modern, root)
     if a.budget:
         m["budget"] = json.load(open(a.budget))
+    if a.server_queries:
+        m["server_queries"] = json.load(open(a.server_queries))
+    if a.query_loop:
+        m["query_loop"] = json.load(open(a.query_loop))
     for item in a.legacy or []:
         prefix, path = item.split(":", 1) if ":" in item and not os.path.exists(item) else (".", item)
         m.setdefault("modern", []).extend(legacy_cases(path, prefix))
@@ -285,8 +300,13 @@ def arrow(diff, decimals=0, higher_is_better=True):
 CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
                 ("html", "Valid HTML"), ("links", "Broken links"), ("axe", "Accessibility (axe)"),
                 ("data", "Personal data or secret in the repository"),
-                ("modern", "Modern web: old code with a native replacement (warning only)")]
-WARN_ONLY = {"modern"}
+                ("modern", "Modern web: old code with a native replacement (warning only)"),
+                ("query_loop", "Database query inside a loop (warning only)")]
+WARN_ONLY = {"modern", "query_loop"}
+SERVER_LABELS = {"config": "Database check: configuration",
+                 "n1": "Database queries per list (3 vs 30 rows)",
+                 "uncovered": "List routes without the 3-vs-30 test",
+                 "scans": "Missing index (full table scan)"}
 
 
 # Lab numbers move a little between runs of the same code; in baseline mode a
@@ -383,6 +403,53 @@ def budget_rows(b, bb, first, row, details):
     return hard, soft
 
 
+def server_rows(s, bs, row, details):
+    """Panel rows of the database checks. Returns the failures (all hard)."""
+    hard = []
+    bs = bs or {}
+    if s["errors"]:
+        row(False, True, T(SERVER_LABELS["config"]), str(len(s["errors"])), T("none"), "—")
+        hard.append("database check configuration")
+        details += [f"<details open><summary>{T(SERVER_LABELS['config'])}</summary>", ""]
+        details += [f"- {e}" for e in s["errors"]] + ["", "</details>", ""]
+    if s["routes"]:
+        bad = [r for r in s["routes"] if not r["ok"]]
+        worst = max(s["routes"], key=lambda r: r["large"] - r["small"])
+        now = f"{len(s['routes']) - len(bad)}/{len(s['routes'])} " + T("constant")
+        if bad:
+            now += f"; `{worst['route']}` {worst['small']}→{worst['large']}"
+        row(not bad, False, T(SERVER_LABELS["n1"]), now, T("same number of queries"), "—")
+        if bad:
+            hard.append("N+1 queries")
+        details += [f"<details{' open' if bad else ''}><summary>{T(SERVER_LABELS['n1'])}</summary>", "",
+                    T("| Route | 3 rows | 30 rows |"), "|---|---|---|"]
+        details += [f"| {'🔴' if not r['ok'] else '🟢'} `{r['route']}` | {r['small']} | {r['large']} |" for r in s["routes"]]
+        details += ["", "</details>", ""]
+
+    def tolerated(name, label, items, base_items, fmt):
+        grew = bool(bs) and len(base_items) > len(bs.get(name, []))
+        ok = not items and not grew
+        now = str(len(items))
+        if base_items:
+            now += " (" + T("{n} in the baseline").format(n=len(base_items)) + ")"
+        vs = "—" if not bs else arrow(len(base_items) - len(bs.get(name, [])), higher_is_better=False)
+        row(ok, bool(base_items), T(label), now, T("none; baseline never grows"), vs)
+        if not ok:
+            hard.append(label)
+        if items or base_items:
+            details.extend([f"<details{' open' if items else ''}><summary>{T(label)}</summary>", ""])
+            details.extend(f"- 🔴 {fmt(i)}" for i in items)
+            details.extend(f"- 🟡 {fmt(i)} ({T('baseline')})" for i in base_items[:40])
+            details.extend(["", "</details>", ""])
+
+    tolerated("baseline_routes", SERVER_LABELS["uncovered"], s["uncovered"], s["baseline_routes"],
+              lambda r: f"`{r['route']}`" + (f" {r['where']}" if r.get("where") else ""))
+    if s.get("indexes"):
+        tolerated("baseline_scans", SERVER_LABELS["scans"], s["scans"], s["baseline_scans"],
+                  lambda x: f"`{x['table']}`: {x['plan']} · `{x['sql'][:120]}`")
+    return hard
+
+
 def compare(a):
     global LANG, PT
     LANG = a.lang
@@ -467,6 +534,11 @@ def compare(a):
         failed += hard + soft
         hard_failed += hard
 
+    if "server_queries" in head:
+        hard = server_rows(head["server_queries"], base.get("server_queries"), row, details)
+        failed += hard
+        hard_failed += hard
+
     if "audit" in head:
         v, bv = head["audit"], base.get("audit")
         serious = v["critical"] + v["high"]
@@ -486,12 +558,14 @@ def compare(a):
 
     title = T("## Web health (baseline)") if first else T("## Web health (against main)")
     out = [title, "", T("| | Item | Now | Limit | vs main |"), "|---|---|---|---|---|", *rows, ""]
-    if first:
+    if first and hard_failed:
+        out += [T("First measure: only the rules in 🔴 fail; the rest is \"never worse\" from now on."), ""]
+    elif first:
         out += [T("First measure: nothing fails; from now on, \"never worse\"."), ""]
     out += details
     print("\n".join(out))
     if hard_failed and a.no_fail:
-        print(f"::error::Performance budget: {', '.join(hard_failed)}", file=sys.stderr)
+        print(f"::error::Rule broken: {', '.join(hard_failed)}", file=sys.stderr)
         return 1
     if failed and not a.no_fail:
         print(f"::error::Health got worse than main: {', '.join(failed)}", file=sys.stderr)
@@ -520,6 +594,8 @@ def main():
     c.add_argument("--data")
     c.add_argument("--modern", help="ESLint JSON of the Baseline CSS check")
     c.add_argument("--budget", help="budget.py check output")
+    c.add_argument("--server-queries", help="server_queries.py check output")
+    c.add_argument("--query-loop", help="tools/query_in_loop.mjs output (cases)")
     c.add_argument("--legacy", action="append", help="'dir:file' from modern-web-guidance legacy-scan --json")
     k = sub.add_parser("compare")
     k.add_argument("base")
