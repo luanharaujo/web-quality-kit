@@ -187,7 +187,7 @@ expect("mounted site: patterns with the mount match", not json.loads(r.stdout)["
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 import site_rules  # noqa: E402
 for name in ("fonts/Inter-SemiBold.woff2", "fonts/Lato-ExtraBold.woff2", "img/foto-principal.webp",
-             "img/capa-larga-1400.avif", "favicon.svg"):
+             "img/capa-larga-1400.avif", "favicon.svg", "img/hero-1920x1080.webp", "img/foto-2026x1111.avif"):
     expect(f"not hashed: {name}", not site_rules.is_hashed(name, []), name)
 for name in ("_astro/index.DdKsxaZq.css", "assets/index-BhK3x9aZ.js", "_astro/hero.Qw12Er34.webp"):
     expect(f"hashed: {name}", site_rules.is_hashed(name, []), name)
