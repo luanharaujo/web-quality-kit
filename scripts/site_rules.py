@@ -62,40 +62,49 @@ FONT_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net", "p
 # file there is content-hashed, so the folder decides. Others are added with
 # "cache": {"hashed_dirs": [...]} or hashed_extra.
 HASHED_DIRS = ("_astro/", "_next/static/", "_app/immutable/")
-# assets/ is Vite's output, but also a plain folder in hand-written sites (and
-# Vite's public/assets/): there the name itself must carry a hash. A year of
-# immutable cache on a file that keeps its name cannot be undone in a browser.
+# assets/ is Vite's output, but also a plain folder in hand-written sites. It
+# counts as build output only when most of its files carry a hash, and then
+# only those files do: a year of immutable cache on a file that keeps its name
+# cannot be undone in a browser. Declaring it in hashed_dirs skips the guess.
 MIXED_DIRS = ("assets/",)
+MIXED_SHARE = 0.8
 
-# Next.js: 16 or more hex digits, and the build id folder.
-HEX_HASH = re.compile(r"(^|[-.])[0-9a-f]{16,}(?=[-.])")
+# Next.js: 16 or more hex digits (a plain number is not one) and the build id folder.
+HEX_HASH = re.compile(r"(^|[-.])(?=\d*[a-f])[0-9a-f]{16,}(?=[-.])")
 BUILD_ID = re.compile(r"(?<=_next/static/)(?!chunks/|css/|media/)[A-Za-z0-9_-]{16,}(?=/)")
-# 8 URL-safe base64 characters: Astro and SvelteKit name.HASH.ext (Astro images
-# add _suffix), Vite name-HASH.ext, SvelteKit chunks HASH.ext.
-SHORT_HASH = (re.compile(r"(\.)([A-Za-z0-9_-]{8})(?=(?:_[A-Za-z0-9_-]+)?\.[A-Za-z0-9]+$)"),
+# Where a short hash sits (8 URL-safe characters): Astro and SvelteKit
+# name.HASH.ext (Astro images add _suffix), Vite name-HASH.ext, SvelteKit
+# chunks HASH.ext.
+SHORT_HASH = (re.compile(r"(\.)([A-Za-z0-9_-]{8})(?=(?:_[A-Za-z0-9_-]+|\.chunk)?\.[A-Za-z0-9]+$)"),
               re.compile(r"(-)([A-Za-z0-9_-]{8})(?=\.[A-Za-z0-9]+$)"),
               re.compile(r"(^)([A-Za-z0-9_-]{8})(?=\.[A-Za-z0-9]+$)"))
-# A hash mixes upper and lower case (sizes like 1280x720 or 800w do not) and
-# is not made of pieces that read as words, numbers or camera names.
+# A piece that reads as a word, a number or a camera name, not as a hash.
 WORD = re.compile(r"[A-Z]?[a-z]*|[A-Z]+|\d+|[A-Z]?[a-z]+\d+|(?:[A-Z]?[a-z]{2,})(?:[A-Z][a-z]{2,})*\d*")
+HEX8 = re.compile(r"(?=.*\d)(?=.*[a-f])[0-9a-f]{8}")
 
 
 def looks_hashed(token):
-    if not (re.search(r"[A-Z]", token) and re.search(r"[a-z]", token)):
+    """For assets/ only: hex, or upper case mixed with lower case or digits
+    (sizes like 1280x720 or 800w are neither), and not made of words."""
+    if HEX8.fullmatch(token):
+        return True
+    if not (re.search(r"[A-Z]", token) and re.search(r"[a-z0-9]", token)):
         return False
     return not all(WORD.fullmatch(piece) for piece in re.split(r"[-_]", token))
 
 
-def unhash_name(name):
-    """The file name with its build hash replaced by [hash]; the rest stays."""
+def unhash_name(name, guess=False):
+    """The file name with its build hash replaced by [hash]; the rest stays.
+    In a build folder the position says it is a hash; guess=True (assets/)
+    also asks the characters to look like one."""
     new = HEX_HASH.sub(lambda m: (".[hash]" if m.group(1) else "[hash]"), name)
     if new != name:
         return new
     for pattern in SHORT_HASH:
-        for m in pattern.finditer(name):
-            if looks_hashed(m.group(2)):
-                mark = ".[hash]" if m.group(1) else "[hash]"
-                return name[:m.start()] + mark + name[m.end():]
+        m = pattern.search(name)
+        if m and (not guess or looks_hashed(m.group(2))):
+            mark = ".[hash]" if m.group(1) else "[hash]"
+            return name[:m.start()] + mark + name[m.end():]
     return name
 
 
@@ -103,26 +112,35 @@ def in_dirs(rel, dirs):
     return any(("/" + d) in ("/" + rel) for d in dirs)
 
 
-def is_hashed(rel, extra, dirs=HASHED_DIRS):
+def mixed_dirs(files, dirs=HASHED_DIRS):
+    """MIXED_DIRS when most of their files carry a hash, else nothing."""
+    names = [f.replace(os.sep, "/") for f in files if f.lower().endswith(HASHABLE)]
+    names = [f.rsplit("/", 1)[-1] for f in names if in_dirs(f, MIXED_DIRS) and not in_dirs(f, dirs)]
+    hits = sum(unhash_name(n, guess=True) != n for n in names)
+    return MIXED_DIRS if names and hits >= MIXED_SHARE * len(names) else ()
+
+
+def is_hashed(rel, extra, dirs=HASHED_DIRS, mixed=MIXED_DIRS):
     rel = rel.replace(os.sep, "/").lstrip("/")
     if not rel.lower().endswith(HASHABLE):
         return False
     if any(re.search(p, rel) for p in extra) or in_dirs(rel, dirs):
         return True
     name = rel.rsplit("/", 1)[-1]
-    return in_dirs(rel, MIXED_DIRS) and unhash_name(name) != name
+    return in_dirs(rel, mixed) and unhash_name(name, guess=True) != name
 
 
-def unhash(text, dirs=HASHED_DIRS):
+def unhash(text, dirs=HASHED_DIRS, mixed=MIXED_DIRS):
     """The same file across builds: the hash of a file in a build folder
     becomes [hash], so "never worse" compares cases, not hashes."""
     def one(m):
         url = m.group(0)
-        if not any(d in url for d in dirs + MIXED_DIRS):
+        sure = any(d in url for d in dirs)
+        if not sure and not any(d in url for d in mixed):
             return url
         path, mark, query = url.partition("?")
         folder, slash, name = BUILD_ID.sub("[hash]", path).rpartition("/")
-        return folder + slash + unhash_name(name) + mark + query
+        return folder + slash + unhash_name(name, guess=not sure) + mark + query
     return re.sub(r"[^\s'\"()|,]+", one, text)
 
 
@@ -186,7 +204,7 @@ def page_url(rel, mount=""):
     return url[: -len(".html")] if url.endswith(".html") else url
 
 
-def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS):
+def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS, mixed=()):
     if not os.path.exists(headers):
         return [case(os.path.relpath(headers, site) if headers.startswith(site) else headers,
                      "cache-headers-file", 0, "no _headers file: hashed files cannot be cached for a year")]
@@ -199,7 +217,7 @@ def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS):
             age = max_age(cc, shared=True)
             if "immutable" in cc.lower() or (age is not None and age > HTML_MAX_AGE):
                 out.append(case(rel, "cache-html", 0, "", f"{url}: Cache-Control '{cc}' (HTML: max-age <= {HTML_MAX_AGE})"))
-        elif is_hashed(rel, extra_hashed, dirs):
+        elif is_hashed(rel, extra_hashed, dirs, mixed):
             url = mount + "/" + rel.replace(os.sep, "/")
             cc = cache_control(url, rules)
             age = max_age(cc) or 0
@@ -501,8 +519,9 @@ def check(a):
         for n in sorted(names):
             files.append(os.path.relpath(os.path.join(root, n), site))
     dirs = HASHED_DIRS + tuple(cfg["hashed_dirs"])
+    mixed = mixed_dirs(files, dirs)
     cases = cache_cases(site, files, a.headers or os.path.join(site, "_headers"), cfg["hashed"],
-                        a.mount.rstrip("/"), dirs)
+                        a.mount.rstrip("/"), dirs, mixed)
     faces = []
     for rel in files:
         low = rel.lower()
@@ -541,7 +560,7 @@ def check(a):
     out = {"mode": a.mode, "errors": errors, "cache": [], "fonts": [], "images": [], "excepted": []}
     for c in cases:
         exc = budget.rule_exception(c["rule"], c["file"], exceptions)
-        c = dict(c, file=unhash(c["file"], dirs), text=unhash(c["text"], dirs))
+        c = dict(c, file=unhash(c["file"], dirs, mixed), text=unhash(c["text"], dirs, mixed))
         if exc:
             out["excepted"].append(dict(c, reason=exc["reason"]))
         else:
