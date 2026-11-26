@@ -9,7 +9,9 @@ name: PR description
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    # No ready_for_review: checks already run on drafts, and a rerun on the same
+    # commit leaves the pull request pending after the code owner is asked.
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
