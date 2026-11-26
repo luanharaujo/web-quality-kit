@@ -22,7 +22,10 @@
     observer: null,
   });
 
-  const now = () => performance.now();
+  // The real clocks, kept before a test can fake them (page.clock).
+  const realNow = performance.now.bind(performance);
+  const realOrigin = performance.timeOrigin;
+  const now = () => realNow();
   const successCount = () => {
     const text = document.body ? document.body.innerText : '';
     return (text.match(SUCCESS) || []).length;
@@ -97,7 +100,7 @@
     k.imgsBefore = document.images.length;
     k.fields = snapshotFields();
     watchBusy();
-    if (typeof window.__kitAction === 'function') window.__kitAction(); // new action for the read checks
+    if (typeof window.__kitAction === 'function') window.__kitAction('tap'); // new action for the read checks
   }
 
   document.addEventListener('pointerdown', (e) => activate(e.target), true);
@@ -110,7 +113,7 @@
   }, true);
   // A typed or chosen value starts a new action for the read checks only
   // (a filter A, then B, then A again is three actions).
-  const newAction = () => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(); };
+  const newAction = () => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction('value'); };
   document.addEventListener('input', newAction, true);
   document.addEventListener('change', newAction, true);
   document.addEventListener('drop', (e) => {
@@ -156,7 +159,7 @@
   k.signals = []; // recent loading signals: { at, how }
   const signal = (how) => {
     k.loadAt = now(); k.loadHow = how;
-    k.signals.push({ at: performance.timeOrigin + k.loadAt, how }); // wall clock, like the kit's
+    k.signals.push({ at: realOrigin + k.loadAt, how }); // wall clock, like the kit's
     if (k.signals.length > 50) k.signals.shift();
   };
   const LOAD_SHOWN = '[role=status],[aria-live]:not([aria-live=off]),[role=progressbar],progress';
@@ -211,7 +214,7 @@
     const hit = k.signals.find((x) => x.at >= t - 500 && x.at <= t + within);
     if (hit) return hit.how;
     // Busy region already in the first HTML (server-rendered skeleton) while the page is still loading.
-    if (t - performance.timeOrigin < 3000 && document.querySelector('[aria-busy=true]')) return 'aria-busy from the first HTML';
+    if (t - realOrigin < 3000 && document.querySelector('[aria-busy=true]')) return 'aria-busy from the first HTML';
     return '';
   };
 
