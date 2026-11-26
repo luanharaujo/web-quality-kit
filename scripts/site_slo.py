@@ -25,6 +25,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import budget  # noqa: E402
@@ -41,12 +42,18 @@ def p75(values):
     return v[lo] + (v[hi] - v[lo]) * (k - lo)
 
 
+def norm(path):
+    """One spelling per page: no query or fragment, percent-escapes decoded
+    (/música/ and /m%C3%BAsica/ are the same page)."""
+    return urllib.parse.unquote(re.sub(r"[?#].*$", "", path)) or "/"
+
+
 def page_of(url, base=""):
     """The page as asked (paths input), not where it ended up: a redirect
     (/about to /about/) or a site in a subfolder (https://x.github.io/repo)
     must keep the name the history and --pages use."""
-    path = re.sub(r"[?#].*$", "", re.sub(r"^https?://[^/]+", "", url)) or "/"
-    prefix = re.sub(r"^https?://[^/]+", "", base or "").rstrip("/")
+    path = norm(re.sub(r"^https?://[^/]+", "", url))
+    prefix = norm(re.sub(r"^https?://[^/]+", "", base or "")).rstrip("/")
     if prefix and (path == prefix or path.startswith(prefix + "/")):
         path = path[len(prefix):] or "/"
     return path
@@ -70,7 +77,7 @@ def lab(a):
         page = page_of(lhr.get("requestedUrl") or lhr.get("finalUrl", ""), a.base_url)
         if v is not None:
             week.setdefault(page, []).append(float(v))
-    missing = [p for p in a.pages.split() if p not in week]
+    missing = [p for p in a.pages.split() if norm(p) not in week]
     if not week or missing:
         print("## SLO\n\n🔴 no Lighthouse result from the live site for: " + (", ".join(missing) or "any page"))
         print("::error::SLO unknown: a page was not measured (Lighthouse failed on it)", file=sys.stderr)
@@ -121,6 +128,7 @@ def probe(a):
     start = now - datetime.timedelta(days=slo["window_days"])
     samples, times = [], []
     last = start
+    older = False   # lines before the window: the prober is not new
     for n, ln in enumerate(open(a.csv), 1):
         ln = ln.strip()
         if not ln or ln.startswith("#"):
@@ -134,7 +142,9 @@ def probe(a):
         except ValueError:
             print(f"::warning::{a.csv}:{n}: not 'ISO time,1|0'", file=sys.stderr)
             continue
-        if start < when <= now:
+        if when <= start:
+            older = True
+        elif when <= now:
             samples.append(up)
             times.append(when)
             last = max(last, when)
@@ -153,15 +163,30 @@ def probe(a):
         state = "🟡 at risk"
     else:
         state = "🟢 ok"
-    print(f"## SLO: availability ({slo['window_days']} days)\n")
     times.sort()
-    gap = max((b - a_ for a_, b in zip(times, times[1:])), default=datetime.timedelta(0))
+    # A known prober (it has lines before the window) is also judged on the
+    # silence from the window start to its first probe; a new one is not.
+    edges = ([start] if older else []) + times
+    gap = max((b - a_ for a_, b in zip(edges, edges[1:])), default=datetime.timedelta(0))
+    max_gap = datetime.timedelta(hours=a.max_gap_hours)
+    unknown = gap > max_gap
+    partial = not older and times[0] - start > max_gap
+    if unknown:
+        state = "🔴 unknown"
+    elif partial and state == "🟢 ok":
+        state = "🟡 partial window"
+    print(f"## SLO: availability ({slo['window_days']} days)\n")
     print("| | Up | Goal | Error budget spent | Probes | Longest silence |\n|---|---|---|---|---|---|")
     print(f"| {state} | {avail:.3f}% | ≥ {slo['availability_pct']}% | {budget_share * 100:.0f}% | {len(samples)} "
           f"| {gap.total_seconds() / 3600:.1f} h |")
-    if gap > datetime.timedelta(hours=a.max_gap_hours):
-        print(f"\n🟡 the prober was silent for {gap.total_seconds() / 3600:.0f} h inside the window: "
-              "availability only counts the time it was watching.")
+    if unknown:
+        print(f"\n🔴 the prober was silent for {gap.total_seconds() / 3600:.0f} h inside the window, so "
+              "availability is unknown for that time.")
+        print("::error::SLO unknown: the prober was silent inside the window", file=sys.stderr)
+        return 1
+    if partial:
+        days = (now - times[0]).total_seconds() / 86400
+        print(f"\n🟡 new prober: {days:.1f} of {slo['window_days']} days watched so far.")
     if budget_share >= RISK_SHARE:
         print(f"::error::SLO at risk: availability {avail:.3f}%, {budget_share * 100:.0f}% of the error budget spent",
               file=sys.stderr)
