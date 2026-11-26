@@ -182,7 +182,7 @@ def load_config(path: str | None) -> dict:
 KNOWN_CHECKS = ["busy", "contract", "double", "error-alert", "error-code", "error-keeps-input", "error-retry",
                 "error-retry-sends", "optimistic", "request-id", "upload-confirm", "upload-dropzone",
                 "upload-independent", "upload-progress"]
-CHECKS_BEFORE_1_10 = set(KNOWN_CHECKS) - {"request-id", "error-code"}  # main saved by an older kit
+CHECKS_BEFORE_1_17 = set(KNOWN_CHECKS) - {"request-id", "error-code"}  # main saved by an older kit
 
 
 def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
@@ -264,7 +264,7 @@ def compare(base: dict | None, cur: dict, mode: str, lang: str) -> tuple[str, bo
         else:
             new_items = [i for i in items if i not in old]
             if field == "failing":
-                known = set(base.get("checks_known") or CHECKS_BEFORE_1_10)
+                known = set(base.get("checks_known") or CHECKS_BEFORE_1_17)
                 new_items = [i for i in new_items if i.rsplit(" ", 1)[-1] in known]
         red = bool(new_items)
         worse |= red
