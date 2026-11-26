@@ -27,8 +27,8 @@ inputs:
     default: "3"
   history-name:
     description: >
-      Name of the history artifact. Two sites in the same workflow (a matrix or
-      two jobs) need one name each, or they mix their weeks.
+      Name of the history artifact (and of the run's work folder). Two sites in
+      the same workflow (a matrix, two jobs or two steps) need one name each.
     default: web-monitor-history
   start-history:
     description: >
@@ -47,13 +47,14 @@ runs:
     - name: Last week's history
       shell: bash
       env:
+        HN: ${{ inputs.history-name }}
         GH_TOKEN: ${{ github.token }}
         START: ${{ inputs.start-history }}
         NAME: ${{ inputs.history-name }}
       run: |
-        mkdir -p "$RUNNER_TEMP/web-monitor"
+        mkdir -p "$RUNNER_TEMP/$HN"
         if [[ "$START" == "true" ]]; then
-          echo "::notice::History started over (start-history)."; touch "$RUNNER_TEMP/web-monitor/history.jsonl"; exit 0
+          echo "::notice::History started over (start-history)."; touch "$RUNNER_TEMP/$HN/history.jsonl"; exit 0
         fi
         file="${GITHUB_WORKFLOW_REF%%@*}"; file="${file##*/}"
         # A week at risk fails the job, so look at completed runs, not only green
@@ -61,37 +62,38 @@ runs:
         # would empty the window and turn "breached" into "ok".
         # Same branch only: a manual run on another branch keeps its own history.
         if ! runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --branch "$GITHUB_REF_NAME" --status completed --limit 5 \
-                     --json databaseId -q '.[].databaseId' 2>"$RUNNER_TEMP/web-monitor/gh.err"); then
+                     --json databaseId -q '.[].databaseId' 2>"$RUNNER_TEMP/$HN/gh.err"); then
           echo "::error::Could not list this workflow's runs (needs permissions: actions: read)"
-          cat "$RUNNER_TEMP/web-monitor/gh.err"; exit 1
+          cat "$RUNNER_TEMP/$HN/gh.err"; exit 1
         fi
         found=""
         for run in $runs; do
-          if gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$NAME" -D "$RUNNER_TEMP/web-monitor" \
-               2>"$RUNNER_TEMP/web-monitor/gh.err"; then
+          if gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$NAME" -D "$RUNNER_TEMP/$HN" \
+               2>"$RUNNER_TEMP/$HN/gh.err"; then
             found="$run"; break
           fi
           # A run without the artifact (it failed before measuring) is skipped;
           # anything else (network, permissions) stops here.
-          grep -qi "no valid artifacts\|no artifact" "$RUNNER_TEMP/web-monitor/gh.err" \
-            || { echo "::error::Could not download the history of run $run"; cat "$RUNNER_TEMP/web-monitor/gh.err"; exit 1; }
+          grep -qi "no valid artifacts\|no artifact" "$RUNNER_TEMP/$HN/gh.err" \
+            || { echo "::error::Could not download the history of run $run"; cat "$RUNNER_TEMP/$HN/gh.err"; exit 1; }
         done
         if [[ -n "$found" ]]; then echo "history from run $found"
         elif [[ -n "$runs" ]]; then
           echo "::error::None of the last runs kept a history: check them, then run once with start-history: true"; exit 1
         else echo "::notice::No history yet: this week starts it."; fi
-        touch "$RUNNER_TEMP/web-monitor/history.jsonl"
+        touch "$RUNNER_TEMP/$HN/history.jsonl"
 
     - name: Measure the live site
       shell: bash
       env:
+        HN: ${{ inputs.history-name }}
         KIT: ${{ github.action_path }}/../..
         BASE_URL: ${{ inputs.base-url }}
         PATHS: ${{ inputs.paths }}
         RUNS: ${{ inputs.runs }}
       run: |
         [[ -x "$KIT/tools/node_modules/.bin/lhci" ]] || (cd "$KIT/tools" && npm ci --ignore-scripts --no-fund --no-audit --loglevel=error)
-        out="$RUNNER_TEMP/web-monitor/lhci"
+        out="$RUNNER_TEMP/$HN/lhci"
         rm -rf "$out" && mkdir -p "$out"
         # One page at a time: lhci stops at the first page that fails, and the
         # pages after it must still be measured (a missing page fails below).
@@ -101,8 +103,8 @@ runs:
           # command); here the live site is measured with the kit's settings only.
           "$KIT/tools/node_modules/.bin/lhci" collect --no-lighthouserc --url "${BASE_URL%/}$p" -n "$RUNS" \
             --settings.chromeFlags="--headless=new --no-sandbox --disable-dev-shm-usage" \
-            --settings.formFactor=mobile --settings.throttlingMethod=simulate >> "$RUNNER_TEMP/web-monitor/lhci.log" 2>&1 \
-            || { echo "::warning::Lighthouse did not finish on $p"; tail -20 "$RUNNER_TEMP/web-monitor/lhci.log"; }
+            --settings.formFactor=mobile --settings.throttlingMethod=simulate >> "$RUNNER_TEMP/$HN/lhci.log" 2>&1 \
+            || { echo "::warning::Lighthouse did not finish on $p"; tail -20 "$RUNNER_TEMP/$HN/lhci.log"; }
           cp .lighthouseci/lhr-*.json "$out"/ 2>/dev/null || true   # no report = the page is missing below
         done
         rm -rf .lighthouseci
@@ -111,13 +113,14 @@ runs:
       id: judge
       shell: bash
       env:
+        HN: ${{ inputs.history-name }}
         KIT: ${{ github.action_path }}/../..
         BUDGET_FILE: ${{ inputs.budget-file }}
         PROBES: ${{ inputs.probes-file }}
         PATHS: ${{ inputs.paths }}
         BASE_URL: ${{ inputs.base-url }}
       run: |
-        out="$RUNNER_TEMP/web-monitor"
+        out="$RUNNER_TEMP/$HN"
         rc=0
         python3 "$KIT/scripts/site_slo.py" lab "$out/lhci" --history "$out/history.jsonl" \
           --config "$BUDGET_FILE" --pages "$PATHS" --base-url "$BASE_URL" > "$out/report.md" || rc=1
@@ -136,7 +139,7 @@ runs:
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ inputs.history-name }}
-        path: ${{ runner.temp }}/web-monitor/history.jsonl
+        path: ${{ runner.temp }}/${{ inputs.history-name }}/history.jsonl
         retention-days: 90
         overwrite: true
         if-no-files-found: error

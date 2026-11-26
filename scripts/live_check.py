@@ -206,37 +206,49 @@ def main():
             print(f"::error::{a.config}: {e}", file=sys.stderr)
         return 2
     if a.cache:
-        problems, n, checked, total = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
-                                     site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
-                                     wait=min(a.wait, 5), seed=a.salt)
+        # Right after a deploy that fixes _headers, the CDN may still send the
+        # old header for a while: ask again for a few rounds before failing.
+        for round_ in range(1, min(a.tries, 3) + 1):
+            problems, n, checked, total = cache_problems(
+                a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
+                site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
+                wait=min(a.wait, 5), seed=a.salt)
+            if not problems or round_ == min(a.tries, 3):
+                break
+            print(f"live cache round {round_}: {len(problems)} problems, asking again in {a.wait:g} s", file=sys.stderr)
+            time.sleep(a.wait)
         print(f"\n## Live cache (Cache-Control)\n\n{len(checked)} pages, {n} hashed files checked.\n")
+        gaps = []   # every reason the check is not complete
         skipped = [p for p in paths if p not in checked]
         if skipped:
-            print(f"🟡 not HTML pages (or with a cache-html exception), cache not checked: "
-                  f"{', '.join(f'`{p}`' for p in skipped)}\n")
+            gaps.append("not HTML pages (or with a cache-html exception), cache not checked: "
+                        + ", ".join(f"`{p}`" for p in skipped))
+        if not checked:
+            gaps.append("no page was checked")
         if not os.path.exists(a.config):
-            print(f"🟡 {a.config} not found (no checkout in this job?): only the kit's build folders count as hashed.\n")
+            gaps.append(f"{a.config} not found (no checkout in this job?): only the kit's build folders count as hashed")
         files = [os.path.relpath(os.path.join(r, f), a.site_dir) for r, _, fs in os.walk(a.site_dir) for f in fs]
         for folder, f_hits, f_total in site_rules.looks_like_build(files, site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"])):
-            print(f"🟡 {folder} looks like build output ({f_hits} of {f_total} names carry a hash) but is not declared "
-                  "in cache.hashed_dirs: its cache was not checked.\n")
+            gaps.append(f"{folder} looks like build output ({f_hits} of {f_total} names carry a hash) but is not "
+                        "declared in cache.hashed_dirs: its cache was not checked")
             print(f"::warning::live cache: {folder} looks like build output but is not declared", file=sys.stderr)
+        if n == 0:
+            gaps.append("no hashed file was checked (none found in the published files)")
+        elif n < total:
+            gaps.append(f"a sample of {n} of {total} hashed files was checked (the sample changes every run)")
+        for g in gaps:
+            print(f"🟡 {g}.\n")
         if problems:
             print("| | Address | Problem |\n|---|---|---|")
             for path, why in problems:
                 print(f"| 🔴 | `{path}` | {why} |")
                 print(f"::error::live cache: {path}: {why}", file=sys.stderr)
             return 1
-        if n == 0:
-            print(("🟡 pages are right, but" if checked else "🟡") +
-                  " no hashed file was checked (none found in the published files).")
-            print("::warning::live cache: no hashed file was checked", file=sys.stderr)
+        if gaps:
+            print("🟡 what was checked has the right Cache-Control; the lines above say what was not.")
+            print("::warning::live cache: partial check", file=sys.stderr)
         else:
-            if n < total:
-                print(f"🟡 right Cache-Control on the {len(checked)} pages and on a sample of {n} of {total} hashed "
-                      "files (the sample changes every run).")
-            else:
-                print("🟢 every page and hashed file has the right Cache-Control.")
+            print("🟢 every page and hashed file has the right Cache-Control.")
     return 0
 
 
