@@ -43,6 +43,7 @@ ALLOW = re.compile(r"kit:short-timeout\s+\S")
 COMMENT = {"js": ("//", "*", "/*"), "swift": ("//", "*", "/*"), "py": ("#",), "sh": ("#",), "ini": ("#", ";")}
 NUM = r"([0-9][0-9_]*(?:\.[0-9]+)?(?:e[0-9]+)?)"
 END = r"(?![\w.])(?!\s*[*+/-])"  # a lone literal, not the start of an expression such as 60 * 1000
+ARG = r"(?![\w.])"  # a command line value: what follows may be the next option (-s) or a URL
 
 # (kind, regex, unit in seconds): the first group is the value.
 RULES = {
@@ -57,7 +58,8 @@ RULES = {
         (r"\.settimeout\(\s*" + NUM + END, 1),
     ],
     "sh": [
-        (r"\bcurl\b[^|;&]*?\s(?:--max-time|--connect-timeout|-m)[ =]\s*" + NUM + END, 1),
+        # -m 5, -m5 and grouped options such as -fsSm5
+        (r"\bcurl\b[^|;&]*?\s(?:--max-time[ =]|--connect-timeout[ =]|-[A-Za-z]{0,8}m)\s*" + NUM + ARG, 1),
         (r"(?:^|[;&|(]\s*)g?timeout\s+(?:-[ks]\s*\S+\s+)*" + NUM + r"s?(?=\s)", 1),
     ],
     "swift": [
@@ -68,9 +70,9 @@ RULES = {
     "ini": [(r"^\s*timeout\s*=\s*\"?" + NUM, 1)],
 }
 # Command line flags of the test runners, in any file read.
-FLAGS = [(r"--(?:testTimeout|hookTimeout|teardownTimeout|test-timeout)[= ]\s*" + NUM + END, 0.001)]
-PW_FLAG = (r"\bplaywright\s+test\b[^\n]*?--timeout[= ]\s*" + NUM + END, 0.001)
-PYTEST_FLAG = (r"\bpytest\b[^\n]*?--timeout[= ]\s*" + NUM + END, 1)
+FLAGS = [(r"--(?:testTimeout|hookTimeout|teardownTimeout|test-timeout)[= ]\s*" + NUM + ARG, 0.001)]
+PW_FLAG = (r"\bplaywright\s+test\b[^\n]*?--timeout[= ]\s*" + NUM + ARG, 0.001)
+PYTEST_FLAG = (r"\bpytest\b[^\n]*?--timeout[= ]\s*" + NUM + ARG, 1)
 # `for _ in $(seq 1 20); do curl ... && break; sleep 0.5; done`: a wait of 10 s.
 LOOP = re.compile(r"\bfor\s+\w+\s+in\s+\$\(\s*seq\s+(?:1\s+)?([0-9]+)\s*\)\s*;?\s*do\b(.*?&&\s*break\b.*?)"
                   r"\bsleep\s+([0-9.]+)\s*;?\s*done")
@@ -207,12 +209,26 @@ def safe(expression):
     return total == 0 or total >= FLOOR_S * 1000
 
 
+def without_blocks(text):
+    """The text without its /* */ comments, in one pass."""
+    kept, at = [], 0
+    for m in re.finditer(r"(?<!\S)/\*", text):
+        if m.start() < at:
+            continue
+        end = text.find("*/", m.end())
+        if end < 0:
+            break
+        kept.append(text[at:m.start()] + " ")
+        at = end + 2
+    return "".join(kept) + text[at:]
+
+
 def raised(text):
     """True when a vitest or Playwright config already sets a CI-safe limit."""
     # Comments do not count. A "/*" inside a glob such as '**/*.ts' follows a
     # quote or a star, never a space, so it is left alone.
     text = "\n".join(x for x in text[:100_000].split("\n") if len(x) <= MAX_LINE)
-    code = re.sub(r"(?<!\S)/\*.*?\*/", " ", text, flags=re.S)
+    code = without_blocks(text)
     code = re.sub(r"(?<!\S)//[^\n]*", " ", code)
     helper = re.search(r"\b(vitestTimeouts|playwrightTimeouts|ciTimeout|ciTimeouts)\b|"
                        r"\bdefineConfig\b[^}\n]{0,200}\}\s{0,20}from\s{0,20}['\"]web-quality-kit-interaction", code)

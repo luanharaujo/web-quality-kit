@@ -94,6 +94,19 @@ quiet = timeout_check.check(repo({
     "test/a.test.js": "const s = { timeout: 5000 } // slow in CI\n"}))
 check("the word CI in a comment or a text does not hide a short limit", len(quiet) == 3, quiet)
 
+options = timeout_check.check(repo({"scripts/test_api.sh": ("curl -m 5 -s $API\n"
+                                                          "curl --max-time 5 --silent $API\n"
+                                                          "curl -fsSm5 $API\n"),
+                                    "package.json": ('{"scripts": {\n'
+                                                     # kit:short-timeout a bad case for the check to find
+                                                     '"a": "playwright test --timeout 5000 --reporter dot",\n'
+                                                     # kit:short-timeout a bad case for the check to find
+                                                     '"b": "node --test --test-timeout 5000 --test-reporter tap",\n'
+                                                     # kit:short-timeout a bad case for the check to find
+                                                     '"c": "pytest --timeout 5 -q"}}')}))
+check("a short limit followed by another option is still caught",
+      len(options) == 6, [(c["file"], c["line"]) for c in options])
+
 # --- the check: good cases ---------------------------------------------------
 GOOD = {
     "package.json": '{"devDependencies": {"vitest": "3.0.0"}}',
@@ -211,7 +224,7 @@ check("shell: in CI a 1 s wait for a 3 s start is green", r.returncode == 0, r.s
 node = shutil.which("node")
 if node:
     js = ("const t = await import(process.argv[1]); const c = await import(process.argv[2]);"
-          "console.log(JSON.stringify([t.vitestTimeouts(), t.playwrightTimeouts(), t.ciTimeout(0) + (c.ciExtra() === (t.inCI() ? 20000 : 0) ? 0 : 1),"
+          "console.log(JSON.stringify([t.vitestTimeouts(), t.playwrightTimeouts(), t.ciTimeout(0) + (c.ciExtra() === (t.inCI() ? 40000 : 0) ? 0 : 1),"
           "c.ciLimits({ use: { actionTimeout: 1000 }, projects: [{ expect: { timeout: 1000 } }], webServer: { command: 'x' } })]))")
 
     def run_js(ci, mode=""):

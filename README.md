@@ -317,7 +317,7 @@ A CI job may run on a slow or busy machine. The rule: with `CI=true` no test tim
 
 Give a job that runs tests `timeout-minutes: 30` or more, for the same reason.
 
-The kit's own checks follow the same floor in CI: the local server gets at least 120 s to start, requests to it 60 s, and the interaction checks give the page 10 s (instead of 3 to 5) to show an error, a retry or an upload confirmation, raising the test's own limit to 90 s (60 s in the failing-network pass) even with Playwright's `defineConfig`. The UX thresholds the checks measure (loading state within 400 ms) stay the same.
+The kit's own checks follow the same floor in CI: the local server gets at least 120 s to start, requests to it 60 s, and the interaction checks give the page 10 s (instead of 3 to 5) to show an error, a retry or an upload confirmation, raising the test's own limit to 90 s (60 s in the failing-network pass) even with Playwright's `defineConfig`, plus 40 s for each action checked with the network failing and for each upload. A test job that runs these checks needs `timeout-minutes: 30`. The UX thresholds the checks measure (loading state within 400 ms) stay the same.
 
 ## Interaction checks (`actions/interaction`)
 
