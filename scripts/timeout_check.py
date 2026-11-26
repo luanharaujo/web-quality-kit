@@ -31,7 +31,7 @@ TEST_DIR = re.compile(r"(^|/)(tests?|__tests__|e2e|spec|\w*Tests)/")
 TEST_NAME = re.compile(
     r"(\.(test|spec|e2e)\.[cm]?[jt]sx?$)|(^test[a-z]{0,2}([_-][^/]*)?\.(py|sh|bash|zsh|[cm]?[jt]s)$)"
     r"|(^ci_test[^/]*$)|(_test\.py$)|(^conftest\.py$)|(\w*Tests?\.swift$)")
-JS_CONFIG = re.compile(r"^(vitest|vite|jest|playwright)([.-][\w-]+)*\.config\.[cm]?[jt]s$|^vitest\.workspace\.[cm]?[jt]s$")
+JS_CONFIG = re.compile(r"^(vitest|vite|jest|playwright)([.-]\w+)*\.config\.[cm]?[jt]s$|^vitest\.workspace\.[cm]?[jt]s$")
 PY_CONFIG = {"pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini"}
 
 # A kit helper, or the CI variable really read: the word "CI" in a comment or
@@ -192,13 +192,29 @@ def scan(path, kind, text):
     return found
 
 
+def safe(expression):
+    """A limit of 30 s or more, none (0), or one this check cannot compute (a
+    name or a call); a literal such as 5_000 or 5 * 1000 is computed."""
+    parts = [p.strip() for p in expression.split("*")]
+    if not all(re.fullmatch(NUM, p) for p in parts):
+        return True
+    total = 1.0
+    for p in parts:
+        total *= value(p)
+    return total == 0 or total >= FLOOR_S * 1000
+
+
 def raised(text):
     """True when a vitest or Playwright config already sets a CI-safe limit."""
-    code = "\n".join(x for x in text.split("\n") if not x.lstrip().startswith("//"))
+    # Comments do not count. A "/*" inside a glob such as '**/*.ts' follows a
+    # quote or a star, never a space, so it is left alone.
+    code = re.sub(r"(?<!\S)/\*.*?\*/", " ", text, flags=re.S)
+    code = re.sub(r"(?<!\S)//[^\n]*", " ", code)
     helper = re.search(r"\b(vitestTimeouts|playwrightTimeouts|ciTimeout|ciTimeouts)\b|web-quality-kit-interaction", code)
     conditional = re.search(r"(testTimeout|timeout)\s*:[^,\n}]*\b(CI|isCI|inCI)\b", code)
-    high = [value(m.group(2)) for m in re.finditer(r"\b(testTimeout|expect\s*:\s*\{\s*timeout)\s*:\s*" + NUM, code)]
-    return bool(helper or conditional or any(v == 0 or v >= FLOOR_S * 1000 for v in high))
+    limits = [m.group(2).strip() for m in
+              re.finditer(r"\b(testTimeout|expect\s*:\s*\{\s*timeout)\s*:\s*([^,}\n]+)", code)]
+    return bool(helper or conditional or any(safe(v) for v in limits))
 
 
 def defaults(root, listed):
@@ -210,7 +226,7 @@ def defaults(root, listed):
     for folder, names in sorted(dirs.items()):
         join = (lambda n, f=folder: f"{f}/{n}" if f else n)
         for name in names:
-            if re.match(r"^playwright([.-][\w-]+)*\.config\.[cm]?[jt]s$", name):
+            if re.match(r"^playwright([.-]\w+)*\.config\.[cm]?[jt]s$", name):
                 text = read(root, join(name))
                 if text is not None and not raised(text) and not ALLOW.search(text):
                     found.append(case(join(name), 0, "", "playwright-default-timeout",
@@ -225,7 +241,7 @@ def defaults(root, listed):
             continue
         if "vitest" not in deps or re.search(r"--testTimeout[= ]\s*([3-9]\d{4}|\d{6,})\b", scripts):
             continue
-        configs = [n for n in names if re.match(r"^(vitest|vite)([.-][\w-]+)*\.config\.[cm]?[jt]s$", n)]
+        configs = [n for n in names if re.match(r"^(vitest|vite)([.-]\w+)*\.config\.[cm]?[jt]s$", n)]
         if any(n.startswith("vitest") for n in configs):
             configs = [n for n in configs if n.startswith("vitest")]
         texts = [(n, read(root, join(n)) or "") for n in configs]

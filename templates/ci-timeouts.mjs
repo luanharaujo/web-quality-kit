@@ -17,8 +17,13 @@ export const vitestTimeouts = () => ({
   teardownTimeout: ciTimeout(10_000),
 });
 
-/** Playwright: `defineConfig({ ...playwrightTimeouts(), ... })` */
-export const playwrightTimeouts = () => ({
-  timeout: ciTimeout(30_000, 90_000), // several waits fit in one test
-  expect: { timeout: ciTimeout(5_000) },
-});
+/** Playwright: `defineConfig({ ...playwrightTimeouts(), ... })`. In the
+ * failing-network pass of the kit's interaction checks, steps break on
+ * purpose: `expect` stays short there. */
+export const playwrightTimeouts = () => {
+  const failing = process.env.KIT_INTERACTION_MODE === 'fail';
+  return {
+    timeout: ciTimeout(30_000, failing ? 60_000 : 90_000), // several waits fit in one test
+    expect: { timeout: failing ? 5_000 : ciTimeout(5_000) },
+  };
+};

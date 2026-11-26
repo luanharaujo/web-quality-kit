@@ -130,6 +130,22 @@ check("limits written with the helpers, long, unlimited, justified or outside te
 md = timeout_check.markdown(bad)
 check("the markdown report lists the cases", "warning only" in md and "test/a.test.ts:2" in md, md[:200])
 
+for config, ok in (("testTimeout: 60 * 1000", True), ("expect: { timeout: 60 * 1000 }", True),
+                   ("testTimeout: SLOW_MS", True), ("testTimeout: 5 * 1000", False),
+                   ("/* testTimeout: 60000 */", False), ("retries: 1 // testTimeout: 60000", False),
+                   ("include: ['**/*.ts'], testTimeout: 60000, exclude: ['x/*/y']", True)):
+    got = timeout_check.raised("export default { test: { " + config + " } }\n")
+    check(f"config limit read as {'safe' if ok else 'short'}: {config}", got is ok, got)
+
+# --- file names are matched in linear time ------------------------------------
+start = time.time()
+long_names = repo({"vite-" + "--" * 60 + "x": "", "playwright-" + "--" * 60 + "x": "",
+                   "a/package.json": '{"devDependencies": {"vitest": "3.0.0"}}', "a/vite-" + "--" * 60 + "x": "",
+                   "b/vitest.e2e-slow.config.ts": "export default { test: { testTimeout: 5000 } }\n"})
+seen = timeout_check.check(long_names)
+check("a long crafted file name is matched at once, and hyphenated config names still count",
+      time.time() - start < 20 and "b/vitest.e2e-slow.config.ts" in [c["file"] for c in seen], seen)
+
 # --- a tree that carries a bare repository never runs its command --------------
 marker = os.path.join(tempfile.mkdtemp(), "ran")
 trap = repo({"HEAD": "ref: refs/heads/main\n",
@@ -170,6 +186,9 @@ check("shell: wait_until returns as soon as the command succeeds", sh("wait_unti
 t = time.time()
 r = sh("wait_until 1 false", "")
 check("shell: wait_until fails after the local limit on a laptop", r.returncode == 1 and time.time() - t < 10, r.returncode)
+r = sh(f'( sleep 2; touch "{os.path.join(tempfile.gettempdir(), "kit-zero-limit")}.$$" ) & '
+       f'wait_until 0 test -f "{os.path.join(tempfile.gettempdir(), "kit-zero-limit")}.$$"', "true")
+check("shell: wait_until 0 waits without limit", r.returncode == 0, r.stderr)
 marker = os.path.join(tempfile.mkdtemp(), "ready")
 t = time.time()
 r = sh(f'( sleep 3; touch "{marker}" ) & wait_until 1 test -f "{marker}"', "true")
@@ -195,9 +214,10 @@ if node:
     check("interaction config: floors on the config, projects, actions and web server",
           kit["timeout"] == 90000 and kit["expect"]["timeout"] == 30000 and kit["use"]["actionTimeout"] == 30000
           and kit["projects"][0]["expect"]["timeout"] == 30000 and kit["webServer"]["timeout"] == 120000, kit)
-    kit = run_js("true", "fail")[3]
-    check("failing-network pass: longer test limit, expect untouched",
-          kit["timeout"] == 60000 and "expect" not in kit, kit)
+    _, pw, _, kit = run_js("true", "fail")
+    check("failing-network pass: longer test limit, expect and actions untouched",
+          kit["timeout"] == 60000 and "expect" not in kit and kit["use"]["actionTimeout"] == 1000
+          and pw == {"timeout": 60000, "expect": {"timeout": 5000}}, [kit, pw])
     vt, pw, _, kit = run_js("")
     check("on a laptop nothing changes", vt["testTimeout"] == 5000 and pw["expect"]["timeout"] == 5000
           and "timeout" not in kit, [vt, pw, kit])
