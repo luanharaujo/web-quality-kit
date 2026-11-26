@@ -167,6 +167,13 @@ check("pagination: a limit far above the cap that returns every row is caught",
       "limit=1000" in probs.get("GET /orders", ""), ur["unpaged"])
 check("pagination: a grouped summary without an exemption is caught", "GET /totals" in probs, ur["unpaged"])
 check("pagination: refusing a limit above the cap with 400 passes", "GET /strict" not in probs, ur["unpaged"])
+exact = lambda **p: sq.check(cfg("good", routes=[{"route": "GET /exact"}], pagination=p,
+                                 server=dict(cfg("good")["server"], start=cfg("good")["server"]["start"].replace(" good ", " uncapped "))), ROOT)
+ex1 = exact()
+check("pagination: the cache-buster parameter is visible to an API that refuses unknown parameters",
+      [u["route"] for u in ex1["unpaged"]] == ["GET /exact"], ex1["unpaged"])
+ex2 = exact(cache_buster="")
+check("pagination: cache_buster \"\" turns it off for such an API", ex2["unpaged"] == [], ex2["unpaged"])
 ue = sq.check(uncapped(pagination={"exempt": {"GET /totals": "one row per status, a handful at most"}}), ROOT)
 check("pagination: an exempt route with a reason passes in absolute mode",
       [u["route"] for u in ue["unpaged"]] == ["GET /orders"] and ue["mode"] == "absolute", ue["unpaged"])
@@ -183,6 +190,10 @@ check("fetch: new Request with a relative URL or a signal passes; without a sign
 check("fetch: a one-parameter fetch(url) wrapper is not a Worker handler", (10, "fetch-no-timeout") in [(c["line"], c["rule"]) for c in rq], rq)
 check("fetch: an explicit signal after a spread is the one checked", (11, "fetch-timeout-too-long") in [(c["line"], c["rule"]) for c in rq]
       and 12 not in [c["line"] for c in rq], rq)
+wk, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/worker_satisfies.ts", "tests/cases/server/worker_exported_var.ts"]), ROOT)
+check("fetch: a Worker exported with `satisfies` or through a variable may forward its request",
+      [(c["file"].rsplit("/", 1)[-1], c["line"]) for c in wk] == [("worker_exported_var.ts", 5)], wk)
+check("fetch: signal: undefined sets no time limit", any(c["line"] == 5 and c["rule"] == "fetch-no-timeout" for c in wk), wk)
 badbase = sq.check(cfg("bad", mode="baseline", routes=[], baseline={"fetch": ["fetch(u)"]}), ROOT)
 check("a malformed baseline.fetch is a configuration error, not a crash", any("baseline.fetch" in e for e in badbase["errors"]), badbase["errors"])
 check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)
