@@ -61,10 +61,10 @@ def page_of(url, base=""):
 
 def lab(a):
     today = datetime.date.fromisoformat(a.today) if a.today else datetime.date.today()
+    # A config error (even one unrelated to the SLO) fails the run, but only
+    # after this week's numbers are in the history: a broken file must not
+    # empty the window week after week.
     cfg = budget.load(a.config, today)
-    if cfg["errors"]:
-        print("## SLO\n\n🔴 configuration:\n" + "\n".join(f"- {e}" for e in cfg["errors"]))
-        return 1
     slo = cfg["slo"]
     week = {}
     for path in sorted(glob.glob(os.path.join(a.lhci, "lhr-*.json"))):
@@ -109,6 +109,12 @@ def lab(a):
         rows.append(f"| {state} | `{page}` | {now / 1000:.2f} s | {win / 1000:.2f} s ({len(window)} week{'s' if len(window) != 1 else ''}) | ≤ {goal / 1000:.2f} s |")
     print(f"## SLO: LCP p75 on the live site ({slo['window_days']} days)\n")
     print("| | Page | This week | Window | Goal |\n|---|---|---|---|---|")
+    if cfg["errors"]:
+        rows.append("")
+        rows.append("🔴 configuration (" + a.config + "):\n" + "\n".join(f"- {e}" for e in cfg["errors"]))
+        print(f"::error::{a.config}: configuration errors", file=sys.stderr)
+    if not os.path.exists(a.config):
+        rows.append(f"\n🟡 {a.config} not found: the kit's goals were used.")
     # Pages measured this week stay in the history; a page without a result
     # is red: no green without a number.
     for page in missing:
@@ -118,7 +124,7 @@ def lab(a):
     print("\nLab numbers: phone on a slow network (Lighthouse mobile, Slow 4G, 4x CPU), p75 of the runs.")
     if bad:
         print("::error::SLO at risk or missed: LCP p75 over the goal on the live site", file=sys.stderr)
-    return 1 if bad or missing else 0
+    return 1 if bad or missing or cfg["errors"] else 0
 
 
 def probe(a):

@@ -41,7 +41,8 @@ class Quiet(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         for prefix, value in self.rules.items():
             if path.startswith(prefix):
-                self.send_header("Cache-Control", value)
+                for v in value if isinstance(value, list) else [value]:
+                    self.send_header("Cache-Control", v)
                 break
         super().end_headers()
 
@@ -183,6 +184,16 @@ def main():
         # A path that is not a page is named as not checked, never counted.
         r = run(base, published, "/", "/adm/versao.json", "--cache")
         assert "1 pages" in r.stdout and "not HTML pages" in r.stdout and "`/adm/versao.json`" in r.stdout, r.stdout
+        # Two Cache-Control lines (CDN + origin): both count, the long one fails.
+        two = os.path.join(tmp, "two")
+        write(two, {"index.html": "<h1>two</h1>"})
+        Quiet.rules = {"/": ["public, max-age=86400", "no-cache"]}
+        server3, base3 = serve(two)
+        try:
+            r = run(base3, two, "/", "--cache")
+            assert r.returncode == 1 and "page cached too long" in r.stdout, r.stdout + r.stderr
+        finally:
+            server3.shutdown()
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr
