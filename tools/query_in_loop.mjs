@@ -22,7 +22,7 @@ const cases = []
 
 function files(dir) {
   const out = []
-  if (!fs.existsSync(dir)) return out
+  if (!fs.existsSync(dir)) { console.error(`source not found: ${dir}`); process.exit(2) }
   if (fs.statSync(dir).isFile()) return EXT.test(dir) ? [dir] : out
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue

@@ -440,16 +440,32 @@ def server_rows(s, bs, row, details):
             return (item["file"], item["text"])
         return item.get("route") or (item.get("table"), item.get("sql"))
 
+    def measured_on_main(name):
+        # A check main never ran (no migrations or source then) has no numbers
+        # to compare: its first run is a first measure, not a growing baseline.
+        kind = name.replace("baseline_", "")
+        m = bs.get("measured")
+        if m is not None:
+            return bool(m.get(kind))
+        return kind != "scans" or bool(bs.get("indexes"))  # main from before "measured"
+
     def tolerated(name, label, items, base_items, fmt):
-        # A baseline item main did not have = the baseline grew (swapping one
-        # item for another counts too, not only the size).
-        before = {ident(i) for i in bs.get(name, [])}
-        grew = bool(bs) and any(ident(i) not in before for i in base_items)
+        # A baseline item main did not have = the baseline grew. Counted per
+        # item, so swapping one item for another, or a second identical one,
+        # counts too, not only the size.
+        compare = bool(bs) and measured_on_main(name)
+        before = Counter(ident(i) for i in bs.get(name, []))
+        grew = False
+        for i in base_items:
+            if before[ident(i)] > 0:
+                before[ident(i)] -= 1
+            else:
+                grew = compare
+        vs = "—" if not compare else arrow(len(base_items) - len(bs.get(name, [])), higher_is_better=False)
         ok = not items and not grew
         now = str(len(items))
         if base_items:
             now += " (" + T("{n} in the baseline").format(n=len(base_items)) + ")"
-        vs = "—" if not bs else arrow(len(base_items) - len(bs.get(name, [])), higher_is_better=False)
         row(ok, bool(base_items), T(label), now, T("none; baseline never grows"), vs)
         if not ok:
             hard.append(label)
