@@ -38,7 +38,7 @@ def lab(lcps, history=(), page="/", settings=MOBILE, today="2026-11-26", slo=Non
         final=None):
     d = tempfile.mkdtemp()
     for i, lcp in enumerate(lcps):
-        json.dump({"requestedUrl": f"{site}{page}?run={i}", "finalUrl": f"{site}{final or page}",
+        json.dump({"requestedUrl": f"{site}{page}", "finalUrl": f"{site}{final or page}",
                    "configSettings": settings,
                    "audits": {"largest-contentful-paint": {"numericValue": lcp}}},
                   open(os.path.join(d, f"lhr-{i}.json"), "w"))
@@ -104,8 +104,14 @@ rc, out, _ = lab([1800], pages="/")
 expect("lab: every expected page measured is ok", rc == 0, out)
 rc, out, hist = lab([1800], site="https://x.github.io/repo", pages="/")
 expect("lab: a site in a subfolder keeps the page name", rc == 0 and hist[0]["page"] == "/", (out, hist))
-rc, out, hist = lab([1800], page="/r%C3%A9sum%C3%A9/", pages="/r\u00e9sum\u00e9/?v=1")
-expect("lab: an accent or a query in paths names the same page", rc == 0 and hist[0]["page"] == "/r\u00e9sum\u00e9/", (out, hist))
+rc, out, hist = lab([1800], page="/r%C3%A9sum%C3%A9/", pages="/r\u00e9sum\u00e9/")
+expect("lab: an accented path names the same page as its escaped form", rc == 0 and hist[0]["page"] == "/r\u00e9sum\u00e9/",
+       (out, hist))
+rc, out, hist = lab([1800], page="/", pages="/ /?lang=en")
+expect("lab: a query is another page (/?lang=en not measured is red, not mixed with /)",
+       rc == 1 and "not measured | `/?lang=en`" in out, out)
+rc, out, hist = lab([1800], page="/?lang=en", pages="/?lang=en", site="https://x.github.io/repo")
+expect("lab: a query on a subfolder site keeps its name", rc == 0 and hist[0]["page"] == "/?lang=en", (out, hist))
 rc, out, hist = lab([1800], page="/about", final="/about/", pages="/about")
 expect("lab: a redirect keeps the asked page name", rc == 0 and hist[0]["page"] == "/about", (out, hist))
 
