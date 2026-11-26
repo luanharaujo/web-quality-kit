@@ -166,6 +166,11 @@ class Compare(unittest.TestCase):
                     names.add("contract")
         self.assertEqual(sorted(names), sorted(g.KNOWN_CHECKS))
 
+    def test_checks_before_1_20_is_frozen(self):
+        self.assertEqual(len(g.CHECKS_BEFORE_1_20), 15)
+        self.assertTrue(g.CHECKS_BEFORE_1_20 <= set(g.KNOWN_CHECKS))
+        self.assertFalse({"request-id", "error-code"} & g.CHECKS_BEFORE_1_20)
+
     def test_read_checks_still_count_against_an_older_main(self):
         old_main = health()  # saved before checks_known existed
         _, worse = g.compare(old_main, health(failing=["GET /items read-duplicate"]), "baseline", "en")
