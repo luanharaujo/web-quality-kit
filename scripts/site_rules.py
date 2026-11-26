@@ -69,7 +69,7 @@ HASHED_DIRS = ("_astro/", "_next/static/", "_app/immutable/")
 # folder that looks like build output but is not declared gets a note in the
 # panel (it does not fail).
 LOOKS_BUILD_SHARE = 0.8
-LOOKS_BUILD_MIN = 3
+LOOKS_BUILD_MIN = 2
 
 # Next.js: 16 or more hex digits (a plain number is not one) and the build id folder.
 HEX_HASH = re.compile(r"(^|[-.])(?=\d*[a-f])[0-9a-f]{16,}(?=[-.])")
@@ -123,8 +123,8 @@ def in_dirs(rel, dirs):
 
 
 def looks_like_build(files, dirs=HASHED_DIRS):
-    """Folders named assets/ (any depth) that are not declared but where most
-    names carry a hash: [(folder, hashed, total)], one entry per folder."""
+    """Folders named assets/ (any depth, with their subfolders) that are not
+    declared but where most names carry a hash: [(folder, hashed, total)]."""
     groups = {}
     for f in files:
         f = f.replace(os.sep, "/")
@@ -133,9 +133,7 @@ def looks_like_build(files, dirs=HASHED_DIRS):
         k = f.rfind("assets/")
         if k < 0 or (k > 0 and f[k - 1] != "/"):
             continue
-        folder, name = f[:k + len("assets/")], f[k + len("assets/"):]
-        if "/" in name:
-            continue
+        folder, name = f[:k + len("assets/")], f.rsplit("/", 1)[-1]
         groups.setdefault(folder, []).append(name)
     out = []
     for folder, names in sorted(groups.items()):
@@ -550,12 +548,10 @@ def check(a):
     cases = cache_cases(site, files, a.headers or os.path.join(site, "_headers"), cfg["hashed"],
                         a.mount.rstrip("/"), dirs)
     built = looks_like_build(files, dirs)
-    notes = [f"{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: "
-             f"add \"{folder}\" to \"cache\": {{\"hashed_dirs\": [...]}} so its cache is checked"
-             for folder, hits, total in built]
-    # Identity (not cache): names in such a folder lose their hash too, so a
-    # rebuild of an undeclared Vite site does not show old cases as new ones.
-    same = declared + tuple(folder for folder, _, _ in built)
+    notes = [{"folder": folder, "hits": hits, "total": total} for folder, hits, total in built]
+    # Identity (not cache): in any assets/ folder, declared or not, a name that
+    # looks hashed loses its hash, so a rebuild does not show old cases as new.
+    same = declared + ("assets/",)
     faces = []
     for rel in files:
         low = rel.lower()

@@ -285,7 +285,7 @@ vite = good_site()
 for name in ("index-Bh-3x9aZ.js", "index-4e5f6a7b.css", "inter-C38fXH4l.woff2"):
     write(f"{vite}/assets/{name}", "x")
 r = run(vite)
-expect("undeclared Vite assets/: a note in the result", any("assets/" in n for n in r["notes"]), r["notes"])
+expect("undeclared Vite assets/: a note in the result", any(n["folder"] == "assets/" for n in r["notes"]), r["notes"])
 expect("undeclared Vite assets/: no cache case", not any(c["file"].startswith("assets/") for c in r["cache"]), r["cache"])
 # Two builds of the same undeclared Vite site: the same cases, not new ones.
 vite2 = good_site()
@@ -294,6 +294,23 @@ for name in ("index-Dq7_Lm2Z.js", "index-9a8b7c6d.css", "inter-Xp4kQ9Wt.woff2"):
 ids = [sorted((c["rule"], c["file"], c["text"]) for k in ("cache", "fonts", "images") for c in run(s)[k]) for s in (vite, vite2)]
 expect("undeclared Vite assets/: a rebuild keeps the case identity", ids[0] == ids[1] and
        any("assets/inter.[hash].woff2" == f for _, f, _ in ids[0]), ids)
+# The same with a small Vite site (2 files) and with subfolders (assets/js/).
+for label, names_a, names_b in (
+        ("2 files", ("index-Bh-3x9aZ.js", "fonts-C38fXH4l.css"), ("index-Dq7_Lm2Z.js", "fonts-Xp4kQ9Wt.css")),
+        ("subfolders", ("js/index-Bh-3x9aZ.js", "css/fonts-C38fXH4l.css"), ("js/index-Dq7_Lm2Z.js", "css/fonts-Xp4kQ9Wt.css"))):
+    builds = []
+    for names in (names_a, names_b):
+        d = good_site()
+        for n in names:
+            write(f"{d}/assets/{n}", "@font-face{font-family:Z;font-weight:300;src:url(z.woff2)}"
+                  "@font-face{font-family:Z;font-weight:500;src:url(z.woff2)}"
+                  "@font-face{font-family:Z;font-weight:800;src:url(z.woff2)}" if n.endswith(".css") else "x")
+        builds.append(run(d))
+    ids = [sorted((c["rule"], c["file"], c["text"]) for k in ("cache", "fonts", "images") for c in b[k]) for b in builds]
+    expect(f"undeclared Vite assets/ ({label}): a rebuild keeps the case identity",
+           ids[0] == ids[1] and any(r == "font-weights" for r, _, _ in ids[0]), ids)
+    expect(f"undeclared Vite assets/ ({label}): a note", [n["folder"] for n in builds[0]["notes"]] == ["assets/"],
+           builds[0]["notes"])
 r = run(vite, config={"cache": {"hashed_dirs": ["assets/"]}})
 expect("declared assets/: its cache is checked, identity without the hash",
        ("cache-hashed", "assets/index.[hash].js") in rules_of(r) and not r["notes"], sorted(rules_of(r)))
@@ -341,11 +358,20 @@ rc, panel = compare(None, metrics(out), "--no-fail")
 expect("absolute: any case fails, even first run with --no-fail", rc == 1, panel)
 rc, panel = compare(None, metrics(good))
 expect("absolute: good site passes", rc == 0, panel)
-noted = metrics(run(vite))
-noted["site_rules"]["notes"] = run(vite)["notes"]
-rc, panel = compare(None, noted)
-expect("a note shows in the panel as a yellow line",
-       any(ln.startswith("🟡") and "assets/" in ln and "hashed_dirs" in ln for ln in panel.splitlines()), panel)
+# The note goes through collect into the panel, in both languages.
+sr = os.path.join(tempfile.mkdtemp(), "rules.json")
+json.dump(run(vite), open(sr, "w"))
+col = subprocess.run([sys.executable, HEALTH, "collect", "--site-rules", sr], capture_output=True, text=True)
+hp = os.path.join(tempfile.mkdtemp(), "h.json")
+open(hp, "w").write(col.stdout)
+pt_note = json.load(open(os.path.join(os.path.dirname(HEALTH), "panel_pt.json")))[
+    '{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: '
+    'add "{folder}" to "cache": {{"hashed_dirs": [...]}} so its cache is checked']
+for lang, words in (("en", "looks like build output"), ("pt", pt_note.split(" (")[0].replace("{folder} ", ""))):
+    panel = subprocess.run([sys.executable, HEALTH, "compare", "-", hp, "--lang", lang], capture_output=True, text=True).stdout
+    expect(f"a note shows in the panel as a yellow line ({lang})",
+           any(ln.startswith("🟡") and "assets/" in ln and words in ln and "hashed_dirs" in ln for ln in panel.splitlines()),
+           panel[-1500:])
 mig = {"migration": {"reason": "old site, images being converted", "until": "2027-03-01"}}
 old = run(bad, mode="baseline", config=mig)
 rc, panel = compare(None, metrics(old))
