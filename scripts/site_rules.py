@@ -83,6 +83,9 @@ SHORT_HASH = (re.compile(r"(\.)([A-Za-z0-9_-]{8})(?=(?:_[A-Za-z0-9_-]+|\.chunk)?
 # A piece that reads as a word, a number or a camera name, not as a hash.
 WORD = re.compile(r"[A-Z]?[a-z]*|[A-Z]+|\d+|[A-Z]?[a-z]+\d+|(?:[A-Z]?[a-z]{2,})(?:[A-Z][a-z]{2,})*\d*")
 HEX8 = re.compile(r"(?=.*\d)(?=.*[a-f])[0-9a-f]{8}")
+# A whole 8-character name made of lower-case words (main-app, polyfill) is a
+# name even in a build folder; a random hash looks like this about 1 in 1000.
+WORDY = re.compile(r"[a-z]+(?:[-_][a-z]+)*")
 
 
 def looks_hashed(token):
@@ -104,9 +107,12 @@ def unhash_name(name, guess=False):
         return new
     for i, pattern in enumerate(SHORT_HASH):
         m = pattern.search(name)
-        # A whole name of 8 characters (SvelteKit chunks) is a hash only when it
-        # looks like one: main-app.js is a name.
-        if m and (not (guess or i == 2) or looks_hashed(m.group(2))):
+        if not m:
+            continue
+        token = m.group(2)
+        # In a kit build folder the position is enough, except a whole name of
+        # 8 characters (SvelteKit chunks) made of words: main-app.js is a name.
+        if looks_hashed(token) if guess else not (i == 2 and WORDY.fullmatch(token)):
             mark = ".[hash]" if m.group(1) else "[hash]"
             return name[:m.start()] + mark + name[m.end():]
     return name
@@ -151,12 +157,13 @@ def is_hashed(rel, extra, dirs=HASHED_DIRS):
 def unhash(text, fixed=HASHED_DIRS, declared=()):
     """The same file across builds: the build hash in a name becomes [hash],
     so "never worse" compares cases, not hashes. In the kit's build folders the
-    position says it is a hash; in a declared folder the characters must also
-    look like one (photo-mountain.png keeps its name). Elsewhere names stay."""
+    position says it is a hash; in a declared folder (or one that looks like
+    build output) the characters must also look like one (photo-mountain.png
+    keeps its name). Elsewhere names stay."""
     def one(m):
         url = m.group(0)
-        sure = any(d in url for d in fixed)
-        if not sure and not any(d in url for d in declared):
+        sure = in_dirs(url, fixed)
+        if not sure and not in_dirs(url, declared):
             return url
         path, mark, query = url.partition("?")
         folder, slash, name = BUILD_ID.sub("[hash]", path).rpartition("/")
@@ -542,9 +549,13 @@ def check(a):
     dirs = HASHED_DIRS + declared
     cases = cache_cases(site, files, a.headers or os.path.join(site, "_headers"), cfg["hashed"],
                         a.mount.rstrip("/"), dirs)
+    built = looks_like_build(files, dirs)
     notes = [f"{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: "
              f"add \"{folder}\" to \"cache\": {{\"hashed_dirs\": [...]}} so its cache is checked"
-             for folder, hits, total in looks_like_build(files, dirs)]
+             for folder, hits, total in built]
+    # Identity (not cache): names in such a folder lose their hash too, so a
+    # rebuild of an undeclared Vite site does not show old cases as new ones.
+    same = declared + tuple(folder for folder, _, _ in built)
     faces = []
     for rel in files:
         low = rel.lower()
@@ -583,7 +594,7 @@ def check(a):
     out = {"mode": a.mode, "errors": errors, "notes": notes, "cache": [], "fonts": [], "images": [], "excepted": []}
     for c in cases:
         exc = budget.rule_exception(c["rule"], c["file"], exceptions)
-        c = dict(c, file=unhash(c["file"], HASHED_DIRS, declared), text=unhash(c["text"], HASHED_DIRS, declared))
+        c = dict(c, file=unhash(c["file"], HASHED_DIRS, same), text=unhash(c["text"], HASHED_DIRS, same))
         if exc:
             out["excepted"].append(dict(c, reason=exc["reason"]))
         else:
