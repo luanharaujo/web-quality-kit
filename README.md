@@ -24,6 +24,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Login policy (declaration, rate limit, Turnstile, same answer, no lockout; see below) | `scripts/auth_check.py`, on by default | `auth-config`, `auth-dynamic` |
 | Logs and request ids of a server | `scripts/server_observability.py` against the local server, with the kit's log helper in the app; `console.*` lint (`tools/console_outside_log.mjs`) | `observability` |
 | Service level objective of a server | `scripts/slo.py validate` on `slo.json`; `scripts/slo.py alert` decides the error-budget warning from numbers passed in | `slo` |
+| Short test time limit (warning only; see below) | `scripts/timeout_check.py` on tests, test configs and workflows | always on |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
 
 Tools are pinned in `tools/package-lock.json` and installed with `npm ci --ignore-scripts` (no install script of any dependency runs); a new tool version is a pull request here.
@@ -299,6 +300,25 @@ In a repository that publishes a preview for each pull request, the link is the 
 
 Proof: `python3 tests/test_preview_link.py`.
 
+## Test time limits in CI (floor 30 s)
+
+A CI job may run on a slow or busy machine. The rule: with `CI=true` no test time limit is under 30 s, so a red test means a real error; on a laptop nothing changes. The helpers below keep that floor, and the check at the end points at the limits that skip them. A limit only costs time when something fails: a wait returns as soon as it succeeds.
+
+| Tests | Copy from `templates/` | Use |
+|---|---|---|
+| vitest | `ci-timeouts.mjs` + `ci-timeouts.d.mts` | `test: { ...vitestTimeouts() }` (5 s becomes 30 s, hooks too) |
+| Playwright | the same file | `defineConfig({ ...playwrightTimeouts(), ... })` (expect 30 s, test 90 s); a config using `defineConfig` from `web-quality-kit-interaction` already has them |
+| `node --test`, scripts in JavaScript | the same file | no limit by default; a fixed one becomes `ciTimeout(ms)` |
+| pytest, Python scripts | `ci_timeouts.py` | `ci_timeout(seconds)`; with pytest-timeout, `from ci_timeouts import ci_timeouts_hook as pytest_configure` in `conftest.py` |
+| shell API tests | `ci_timeouts.sh` | `curl --max-time "$(ci_limit 10)"`, `wait_until 10 curl -sf "$URL"` |
+| XCTest | a helper in the test target | `waitForExistence(timeout: ciTimeout(5))` |
+
+`scripts/timeout_check.py` (always on, **warning only**) lists the limits under 30 s fixed in test files, test configs, `package.json` and workflows, and vitest or Playwright configs left with their 5 s defaults. Lines that use the helpers or read the `CI` variable are fine. A limit that must stay short (a test of the time limit itself) says why on the same line or the line above: `// kit:short-timeout <reason>`. It reads text, line by line: a limit split over lines or kept in a constant is not seen.
+
+Give a job that runs tests `timeout-minutes: 30` or more, for the same reason.
+
+The kit's own checks follow the same floor in CI: the local server gets at least 120 s to start, requests to it 60 s, and the interaction checks give the page 10 s (instead of 3) to show an error, a retry or an upload confirmation. The UX thresholds the checks measure (loading state within 400 ms) stay the same.
+
 ## Interaction checks (`actions/interaction`)
 
 Every action that saves data (a click or a submit that sends POST, PUT,
@@ -384,7 +404,7 @@ python3 ../web-quality-kit/scripts/web_health.py compare - /tmp/health/health.js
 
 ## Kit's own tests
 
-`tests/test_site_rules.py` (a good built site has no case; a bad one has each cache, font and image problem caught by its own rule; exceptions hide only their files; absolute fails on any case, baseline on new ones), `tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks; lists without pagination and fetch calls without a time limit are caught) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
+`tests/test_site_rules.py` (a good built site has no case; a bad one has each cache, font and image problem caught by its own rule; exceptions hide only their files; absolute fails on any case, baseline on new ones), `tests/test_budget.py` (stricter limits apply, a looser one without a registered exception and an expired exception are errors, a desktop or fast-network report is an error; absolute fails over the limit, baseline only when worse or new), `tests/test_web_health.py` (each gate fails when worse, old cases only warn, the baseline never fails), `tests/test_timeouts.py` (every short fixed limit caught, a bare repository in the tree runs nothing, the helpers keep 30 s in CI only, the panel only warns), `tests/test_data_guard.py` (bad case caught, good case passes, no value in the output) and `tests/test_server_queries.py` (an example server with an N+1 in a loop, a batch built per row, a list route without the test and a missing index is caught; the good one with JOIN/IN and an index passes; the query headers never leave localhost and carry no SQL in production logs; the baseline only shrinks; lists without pagination and fetch calls without a time limit are caught) and `tests/test_pr_description.py` (lint copy equals the central one, the comment shows each check's real result, every panel metric is explained, create/update/skip on a fake API) and `tests/test_collect.sh` (every tool finds the problem planted in `tests/cases/site`; a heavy page fails the budget with a real Lighthouse run and the light one passes). They run in `.github/workflows/check.yml`.
 
 Interaction: `tests/test_interaction.sh` runs a demo app (`tests/interaction/demo`) with one good page and one bad page per rule, in both passes, and checks that each bad page is caught by its own rule and the good pages pass; `tests/test_interaction_gate.py` proves the route scan, the coverage and new vs baseline (job `interaction`).
 

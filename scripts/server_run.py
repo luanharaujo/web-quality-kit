@@ -14,6 +14,14 @@ import urllib.parse
 import urllib.request
 
 
+def ci_floor(seconds, floor):
+    """In CI (CI=true) a slow or busy machine must not turn a check red: no
+    wait is under `floor` seconds there."""
+    if os.environ.get("CI", "").lower() in ("true", "1"):
+        return max(seconds, floor)
+    return seconds
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -76,7 +84,7 @@ def get(url, headers, timeout=30, body=False):
     never followed; 4xx and 5xx raise HTTPError."""
     req = urllib.request.Request(url, headers=headers)
     try:
-        with OPENER.open(req, timeout=timeout) as r:  # nosec B310: local server, http(s) only
+        with OPENER.open(req, timeout=ci_floor(timeout, 60)) as r:  # nosec B310: local server, http(s) only
             data = r.read()
             return (r.status, r.headers, data) if body else (r.status, r.headers)
     except urllib.error.HTTPError as e:
@@ -98,12 +106,12 @@ class Server:
         self.proc = subprocess.Popen(fill(srv["start"], port=self.port, tmp=tmp), shell=True, cwd=root,
                                      stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
         ready = self.base + srv.get("ready", "/")
-        deadline = time.time() + float(srv.get("timeout", 90))
+        deadline = time.time() + ci_floor(float(srv.get("timeout", 90)), 120)
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 self.fail(f"the server stopped (exit {self.proc.returncode})")
             try:
-                get(ready, {}, timeout=5)
+                get(ready, {}, timeout=5)  # in CI: 60 s (get)
                 return
             except (urllib.error.URLError, OSError):
                 time.sleep(0.5)

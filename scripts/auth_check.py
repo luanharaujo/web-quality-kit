@@ -64,6 +64,8 @@ from email.parser import BytesParser
 from email.policy import HTTP
 from urllib.parse import parse_qs
 
+from server_run import ci_floor
+
 SRC_EXT = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".html", ".htm", ".sql", ".py", ".swift"}
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".deploy", ".wrangler", "coverage", ".quality", "tests", "test",
              "__tests__", "docs"}
@@ -825,13 +827,13 @@ class Server:
         env = dict(os.environ, TURNSTILE_SECRET=secret, TURNSTILE_VERIFY_URL=verify_url)
         self.proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=self.log, stderr=subprocess.STDOUT,
                                      start_new_session=True, env=env)
-        deadline = time.time() + srv.get("timeout", 120)
+        deadline = time.time() + ci_floor(srv.get("timeout", 120), 120)
         ready = self.url + srv.get("ready", "/")
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 raise RuntimeError("the server stopped: " + self.tail())
             try:
-                urllib.request.urlopen(ready, timeout=2)
+                urllib.request.urlopen(ready, timeout=ci_floor(2, 60))
                 return
             except urllib.error.HTTPError:
                 return
@@ -868,7 +870,7 @@ def send(url, route, ident, token, ip):
     req = urllib.request.Request(url + path, data=json.dumps(body).encode(), headers=headers, method=method)
     t0 = time.perf_counter()
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=ci_floor(30, 60)) as r:
             status, raw, wait = r.status, r.read(), r.headers.get("retry-after")
     except urllib.error.HTTPError as e:
         status, raw, wait = e.code, e.read(), e.headers.get("retry-after")

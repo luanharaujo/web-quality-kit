@@ -44,6 +44,8 @@
 #                   data in the lines, console.* outside the kit's log helper). Empty = off
 #   SLO             the server's slo.json (availability and p95 targets, alert limits),
 #                   validated by scripts/slo.py. Empty = off
+#   (always)        test time limits under 30 s fixed in tests and test configs
+#                   (scripts/timeout_check.py), warning only
 #   MODERN          "true" = Baseline CSS check (@eslint/css use-baseline) and Modern Web
 #                   Guidance legacy-scan (old code with a native replacement), warning only
 set -uo pipefail
@@ -258,6 +260,11 @@ if [[ "${DATA_GUARD:-}" == "true" ]]; then
   python3 "$KIT/scripts/data_guard.py" --root "$PWD" > "$OUT/data.json"
   args+=(--data "$OUT/data.json")
 fi
+
+# Short fixed test time limits (CI floor 30 s): always on, warning only.
+python3 "$KIT/scripts/timeout_check.py" "$PWD" > "$OUT/timeouts.json" \
+  || { echo "::warning::timeout_check.py did not run"; echo '[]' > "$OUT/timeouts.json"; }
+args+=(--timeouts "$OUT/timeouts.json")
 
 if [[ "${MODERN:-}" == "true" ]]; then
   log "Modern web (Baseline CSS, legacy-scan)"
