@@ -33,16 +33,19 @@ def config(slo=None):
     return path
 
 
-def lab(lcps, history=(), page="/", settings=MOBILE, today="2026-11-26", slo=None, pages=""):
+def lab(lcps, history=(), page="/", settings=MOBILE, today="2026-11-26", slo=None, pages="", site="https://example.org",
+        final=None):
     d = tempfile.mkdtemp()
     for i, lcp in enumerate(lcps):
-        json.dump({"requestedUrl": f"https://example.org{page}?run={i}", "configSettings": settings,
+        json.dump({"requestedUrl": f"{site}{page}?run={i}", "finalUrl": f"{site}{final or page}",
+                   "configSettings": settings,
                    "audits": {"largest-contentful-paint": {"numericValue": lcp}}},
                   open(os.path.join(d, f"lhr-{i}.json"), "w"))
     hist = os.path.join(d, "history.jsonl")
     with open(hist, "w") as f:
         f.writelines(json.dumps(h) + "\n" for h in history)
-    r = subprocess.run([sys.executable, SLO, "lab", d, "--history", hist, "--config", config(slo), "--today", today, "--pages", pages],
+    r = subprocess.run([sys.executable, SLO, "lab", d, "--history", hist, "--config", config(slo), "--today", today, "--pages", pages,
+                        "--base-url", site],
                        capture_output=True, text=True)
     return r.returncode, r.stdout, [json.loads(ln) for ln in open(hist) if ln.strip()]
 
@@ -90,6 +93,10 @@ rc, out, _ = lab([1800], pages="/ /contact/")
 expect("lab: a page Lighthouse did not measure fails (no green without a number)", rc == 1 and "/contact/" in out, out)
 rc, out, _ = lab([1800], pages="/")
 expect("lab: every expected page measured is ok", rc == 0, out)
+rc, out, hist = lab([1800], site="https://x.github.io/repo", pages="/")
+expect("lab: a site in a subfolder keeps the page name", rc == 0 and hist[0]["page"] == "/", (out, hist))
+rc, out, hist = lab([1800], page="/about", final="/about/", pages="/about")
+expect("lab: a redirect keeps the asked page name", rc == 0 and hist[0]["page"] == "/about", (out, hist))
 
 # --- availability over the prober's log -------------------------------------------
 rc, out, _ = probe(0)
@@ -109,6 +116,11 @@ open(path, "w").write("2026-11-01T12:00:00+00:00,1\n")
 r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
                    capture_output=True, text=True)
 expect("probe: a prober that stopped days ago is not green", r.returncode == 1 and "stopped" in r.stdout, r.stdout)
+open(path, "w").writelines([f"2026-11-{d:02d}T12:00:00+00:00,1\n" for d in (1, 2)] +
+                           [f"2026-11-26T{h:02d}:00:00+00:00,1\n" for h in range(12)])
+r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
+                   capture_output=True, text=True)
+expect("probe: a long silence inside the window is shown", "silent for" in r.stdout, r.stdout)
 rc, out, err = probe(0, extra="not a line\n")
 expect("probe: a bad line is a warning, not a crash", rc == 0 and "not 'ISO time,1|0'" in err, err)
 rc, out, _ = probe(0, total=1500, extra="2026-10-01T00:00:00+00:00,0\n" * 50)

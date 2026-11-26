@@ -144,10 +144,9 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
           base-url: https://example.com
           pages-artifact: "true"   # the files actions/deploy-pages published in this run
           paths: / /adm/versao.json /treinos/
-          cache-check: "true"      # also the real Cache-Control the host answers
 ```
 
-`cache-check: "true"` asks the live site for the same cache rules as `site-rules` (a year + `immutable` on hashed files, at most 600 s on pages): a host that ignores `_headers` fails here even when the file was right. Hashed files are the kit's build folders plus `cache.hashed_dirs` / `hashed_extra` from `budget-file` (check out the repo in that job), at most 30 of them per run, taken in turn from each folder. The `cache-html` and `cache-hashed` exceptions registered for `site-rules` hold here too. A network error or a 5xx is asked again before it counts.
+On a host that applies `_headers` (Cloudflare Pages, or a CDN in front), add `cache-check: "true"`. GitHub Pages alone answers `max-age=600` for every file and ignores `_headers`, so there the check would always fail on hashed files: leave it off. `cache-check: "true"` asks the live site for the same cache rules as `site-rules` (a year + `immutable` on hashed files, at most 600 s on pages): a host that ignores `_headers` fails here even when the file was right. Hashed files are the kit's build folders plus `cache.hashed_dirs` / `hashed_extra` from `budget-file` (check out the repo in that job), at most 30 of them per run, taken in turn from each folder. The `cache-html` and `cache-hashed` exceptions registered for `site-rules` hold here too. A network error or a 5xx is asked again before it counts. It never says green without checking: no config file, no hashed file found, or an undeclared folder that looks like build output shows a yellow line; a config error fails, but only after the page table says whether the deploy is live.
 
 ## Every week: are the goals safe? (`actions/web-monitor`)
 
@@ -161,7 +160,7 @@ Copy `templates/web-monitor.yml`. Every Monday it runs Lighthouse on the live si
 - 🟡 at risk: this week is over the goal, or half of the availability error budget is spent. The run fails, so GitHub emails the owner.
 - 🔴 breached: the window's p75 is over the goal, or the whole error budget is spent.
 
-It never turns green without a number: a page Lighthouse could not measure, a prober whose last line is more than a day old, or a history it cannot read fails the run. If the last runs kept no history at all, check why, then run it once by hand with `start-history`.
+Pages are named as asked in `paths` (a redirect or a site in a subfolder of `base-url` keeps that name). It never turns green without a number: a page Lighthouse could not measure, a prober whose last line is more than a day old, or a history it cannot read fails the run. If the last runs kept no history at all, check why, then run it once by hand with `start-history`.
 
 Availability needs a prober that writes `ISO time,1|0` lines (`probes-file`); an outage itself is the prober's alarm, this job only answers "will we miss the goal this month?". Lab numbers are not real users' numbers: they are the same phone every week, which is what makes a trend.
 

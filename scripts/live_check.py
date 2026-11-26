@@ -152,11 +152,9 @@ def main():
     if a.cache and not a.site_dir:
         print("::error::--cache needs --site-dir (the published files say which are hashed)", file=sys.stderr)
         return 2
+    # The config is read now but judged after the live check: a budget problem
+    # must not hide whether the deploy is live.
     cfg = budget.load(a.config, datetime.date.today()) if a.cache else {"errors": [], "hashed": [], "hashed_dirs": [], "exceptions": []}
-    if cfg["errors"]:
-        for e in cfg["errors"]:
-            print(f"::error::{a.config}: {e}", file=sys.stderr)
-        return 2
     paths = a.path or ["/"]
     pending = {path: "" for path in paths}
     results = {}
@@ -179,18 +177,33 @@ def main():
         for path in pending:
             print(f"::error::{path} is not the published version: {results[path][1]}", file=sys.stderr)
         return 1
+    if a.cache and cfg["errors"]:
+        for e in cfg["errors"]:
+            print(f"::error::{a.config}: {e}", file=sys.stderr)
+        return 2
     if a.cache:
         problems, n = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
                                      site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
                                      wait=min(a.wait, 5))
         print(f"\n## Live cache (Cache-Control)\n\n{len(paths)} pages, {n} hashed files checked.\n")
+        if not os.path.exists(a.config):
+            print(f"🟡 {a.config} not found (no checkout in this job?): only the kit's build folders count as hashed.\n")
+        files = [os.path.relpath(os.path.join(r, f), a.site_dir) for r, _, fs in os.walk(a.site_dir) for f in fs]
+        for folder, hits, total in site_rules.looks_like_build(files, site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"])):
+            print(f"🟡 {folder} looks like build output ({hits} of {total} names carry a hash) but is not declared "
+                  "in cache.hashed_dirs: its cache was not checked.\n")
+            print(f"::warning::live cache: {folder} looks like build output but is not declared", file=sys.stderr)
         if problems:
             print("| | Address | Problem |\n|---|---|---|")
             for path, why in problems:
                 print(f"| 🔴 | `{path}` | {why} |")
                 print(f"::error::live cache: {path}: {why}", file=sys.stderr)
             return 1
-        print("🟢 every page and hashed file has the right Cache-Control.")
+        if n == 0:
+            print("🟡 pages are right, but no hashed file was checked (none found in the published files).")
+            print("::warning::live cache: no hashed file was checked", file=sys.stderr)
+        else:
+            print("🟢 every page and hashed file has the right Cache-Control.")
     return 0
 
 

@@ -94,7 +94,7 @@ runs:
             --settings.chromeFlags="--headless=new --no-sandbox --disable-dev-shm-usage" \
             --settings.formFactor=mobile --settings.throttlingMethod=simulate >> "$RUNNER_TEMP/web-monitor/lhci.log" 2>&1 \
             || { echo "::warning::Lighthouse did not finish on $p"; tail -20 "$RUNNER_TEMP/web-monitor/lhci.log"; }
-          [[ -d .lighthouseci ]] && cp .lighthouseci/lhr-*.json "$out"/ 2>/dev/null
+          cp .lighthouseci/lhr-*.json "$out"/ 2>/dev/null || true   # no report = the page is missing below
         done
         rm -rf .lighthouseci
 
@@ -106,11 +106,12 @@ runs:
         BUDGET_FILE: ${{ inputs.budget-file }}
         PROBES: ${{ inputs.probes-file }}
         PATHS: ${{ inputs.paths }}
+        BASE_URL: ${{ inputs.base-url }}
       run: |
         out="$RUNNER_TEMP/web-monitor"
         rc=0
         python3 "$KIT/scripts/site_slo.py" lab "$out/lhci" --history "$out/history.jsonl" \
-          --config "$BUDGET_FILE" --pages "$PATHS" > "$out/report.md" || rc=1
+          --config "$BUDGET_FILE" --pages "$PATHS" --base-url "$BASE_URL" > "$out/report.md" || rc=1
         if [[ -n "$PROBES" ]]; then
           echo >> "$out/report.md"
           python3 "$KIT/scripts/site_slo.py" probe "$PROBES" --config "$BUDGET_FILE" >> "$out/report.md" || rc=1
