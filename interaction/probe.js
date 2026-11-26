@@ -125,9 +125,22 @@
   }, true);
   // A typed or chosen value starts a new action for the read checks only
   // (a filter A, then B, then A again is three actions).
-  // A checkbox, radio, switch or select tapped sends input and change right
-  // after its click: "control" tells the kit they are part of that tap.
-  const newAction = (e) => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(typing(e.target) ? e.type : 'control'); };
+  // A checkbox, radio or switch sends input and change right after its click:
+  // "control" tells the kit they are part of that tap. Choosing in a select
+  // is a tap of its own (it may come long after the click, or with none).
+  const newAction = (e) => {
+    if (k.suppress) return;
+    // input comes first, before the page's own change handler reads: the
+    // action starts before its read goes out (the change right after is the same tap)
+    if (e.target && e.target.tagName === 'SELECT') {
+      // Each choice is its own action, even a quick one: activate() skips a
+      // second activation within 100 ms (a click and its submit).
+      if (e.type === 'input' && typeof window.__kitAction === 'function') window.__kitAction('tap');
+      activate(e.target);
+      return;
+    }
+    if (typeof window.__kitAction === 'function') window.__kitAction(typing(e.target) ? e.type : 'control');
+  };
   document.addEventListener('input', newAction, true);
   document.addEventListener('change', newAction, true);
   document.addEventListener('drop', (e) => {

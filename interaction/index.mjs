@@ -180,13 +180,13 @@ class Interaction {
     report({ type: 'check', route: key, check, ok: false, message, test: this.testInfo.titlePath.join(' > ') });
   }
 
-  // A problem that does not fail yet (checks being rolled out): the panel
-  // lists it, the test and the gate do not fail.
   // A check that could not judge: kept in the report, never counted.
   note(key, check, message) {
     report({ type: 'note', route: key, check, message, test: this.testInfo.titlePath.join(' > ') });
   }
 
+  // A problem that does not fail yet (checks being rolled out): the panel
+  // lists it, the test and the gate do not fail.
   warn(key, check, message) {
     report({ type: 'warning', route: key, check, ok: false, message, test: this.testInfo.titlePath.join(' > ') });
   }
@@ -420,6 +420,7 @@ class Interaction {
     // its failure screenshot: only after a test that went as expected.
     if (this.opts.mode !== 'off' && this.testInfo.status === this.testInfo.expectedStatus) await this.reads.debounce();
     await Promise.allSettled([...this.pending]);
+    this.reads.end();
     if (!this.failures.length) return;
     for (const f of this.failures) this.testInfo.annotations.push({ type: 'kit-interaction', description: f });
     if (this.opts.enforce === 'throw') {

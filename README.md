@@ -387,8 +387,9 @@ real repositories.
 
 Only reads to the app count: the page's host, its subdomains (and those of
 the site behind `www.`), and hosts listed in `api_hosts`. A write counts as a
-tap's when it leaves within 1.5 s of the tap (or submit), or of the end of a
-read that tap started (up to 5 s in all); typing does not open that window,
+tap's when it leaves within 1.5 s of the tap (a click, submit, Enter in a
+field or a choice in a select), or of the end of a read that tap started (up
+to 5 s in all); typing does not open that window,
 and later writes, such as autosave, are left alone. Reads are not waited for
 when a test ends, and the loading check keeps working under `page.clock`.
 Every exception needs a reason, `optimistic` included: an entry without one
