@@ -137,6 +137,7 @@ hang = cfg("good", server={"start": "sleep 31.4", "url": "http://127.0.0.1:{port
 hr = sq.check(hang, ROOT)
 alive = subprocess.run(["pgrep", "-f", "sleep 31.4"], capture_output=True).returncode == 0
 check("a server that never gets ready is an error and is not left running", any("did not answer" in e for e in hr["errors"]) and not alive, hr["errors"])
+check("a server that failed leaves pagination and indexes unmeasured", hr["measured"]["unpaged"] is False and hr["measured"]["scans"] is False, hr["measured"])
 new_scan = dict(fixed, measured={"routes": True, "scans": True, "unpaged": False, "fetch": False})
 main_without = dict(new_scan, baseline_scans=[], measured={"routes": True, "scans": False, "unpaged": False, "fetch": False})
 check("a check main never ran is a first measure, not a growing baseline", panel(new_scan, main_without)[0] == 0)
@@ -155,7 +156,7 @@ check("same result against an old main with the same red items fails only for th
 
 # --- pagination: a limit far above the cap, lists that do not page by nature -----
 def uncapped(**over):
-    c = cfg("good", routes=[{"route": "GET /orders"}, {"route": "GET /totals"}], **over)
+    c = cfg("good", routes=[{"route": "GET /orders"}, {"route": "GET /totals"}, {"route": "GET /strict"}], **over)
     c["server"] = dict(c["server"], start=c["server"]["start"].replace(" good ", " uncapped "))
     return c
 
@@ -165,6 +166,7 @@ probs = {u["route"]: u["problem"] for u in ur["unpaged"]}
 check("pagination: a limit far above the cap that returns every row is caught",
       "limit=1000" in probs.get("GET /orders", ""), ur["unpaged"])
 check("pagination: a grouped summary without an exemption is caught", "GET /totals" in probs, ur["unpaged"])
+check("pagination: refusing a limit above the cap with 400 passes", "GET /strict" not in probs, ur["unpaged"])
 ue = sq.check(uncapped(pagination={"exempt": {"GET /totals": "one row per status, a handful at most"}}), ROOT)
 check("pagination: an exempt route with a reason passes in absolute mode",
       [u["route"] for u in ue["unpaged"]] == ["GET /orders"] and ue["mode"] == "absolute", ue["unpaged"])
@@ -177,7 +179,12 @@ check("page_of: items_field pointing at a number is no list", sq.page_of('{"item
 # --- fetch(new Request(...)) and a forwarded incoming request -------------------
 rq, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/external_request.mjs"]), ROOT)
 check("fetch: new Request with a relative URL or a signal passes; without a signal it is caught",
-      [(c["line"], c["rule"]) for c in rq] == [(5, "fetch-no-timeout"), (9, "fetch-no-timeout")], rq)
+      [(c["line"], c["rule"]) for c in rq][:2] == [(5, "fetch-no-timeout"), (9, "fetch-no-timeout")], rq)
+check("fetch: a one-parameter fetch(url) wrapper is not a Worker handler", (10, "fetch-no-timeout") in [(c["line"], c["rule"]) for c in rq], rq)
+check("fetch: an explicit signal after a spread is the one checked", (11, "fetch-timeout-too-long") in [(c["line"], c["rule"]) for c in rq]
+      and 12 not in [c["line"] for c in rq], rq)
+badbase = sq.check(cfg("bad", mode="baseline", routes=[], baseline={"fetch": ["fetch(u)"]}), ROOT)
+check("a malformed baseline.fetch is a configuration error, not a crash", any("baseline.fetch" in e for e in badbase["errors"]), badbase["errors"])
 check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)
 
 # --- exemptions ------------------------------------------------------------------
