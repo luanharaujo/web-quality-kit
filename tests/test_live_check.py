@@ -15,8 +15,19 @@ CHECK = os.path.join(HERE, "..", "scripts", "live_check.py")
 
 
 class Quiet(SimpleHTTPRequestHandler):
+    # Cache-Control per path prefix, like a CDN applying a _headers file.
+    rules = {}
+
     def log_message(self, *args):
         pass
+
+    def end_headers(self):
+        path = self.path.split("?")[0]
+        for prefix, value in self.rules.items():
+            if path.startswith(prefix):
+                self.send_header("Cache-Control", value)
+                break
+        super().end_headers()
 
 
 def serve(folder):
@@ -35,7 +46,7 @@ def write(folder, files):
 def run(base, site, *paths):
     args = [sys.executable, CHECK, "--base-url", base, "--site-dir", site, "--tries", "2", "--wait", "0.1"]
     for p in paths:
-        args += ["--path", p]
+        args += [p] if p.startswith("--") else ["--path", p]
     return subprocess.run(args, capture_output=True, text=True)
 
 
@@ -57,6 +68,39 @@ def main():
 
         r = run(base, published, "/gone/")
         assert r.returncode == 1 and "HTTP 404" in r.stdout, r.stdout
+
+        # Live cache: the host applies the right headers -> passes.
+        write(live, {"adm/versao.json": '{"versao": "new"}'})
+        asset = {"_astro/app.Ab12Cd34.js": "console.log(1)"}
+        write(live, asset)
+        write(published, asset)
+        Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/": "public, max-age=0, must-revalidate"}
+        r = run(base, published, "/", "--cache")
+        assert r.returncode == 0 and "1 hashed files" in r.stdout, r.stdout + r.stderr
+        # The host ignored _headers: the hashed file gets a short cache -> fails.
+        Quiet.rules = {"/": "public, max-age=3600"}
+        r = run(base, published, "/", "--cache")
+        assert r.returncode == 1 and "_astro/app.Ab12Cd34.js" in r.stdout and "page cached too long" in r.stdout, r.stdout
+        # A declared Vite folder (web-budget.json cache.hashed_dirs) is checked
+        # live too; undeclared, it is not asked for a year of cache.
+        vite = {"assets/index-Bh-3x9aZ.js": "console.log(2)"}
+        write(live, vite)
+        write(published, vite)
+        Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/": "public, max-age=0, must-revalidate"}
+        r = run(base, published, "/", "--cache")
+        assert r.returncode == 0 and "1 hashed files" in r.stdout, r.stdout + r.stderr
+        cfg = os.path.join(tmp, "web-budget.json")
+        with open(cfg, "w") as f:
+            f.write('{"cache": {"hashed_dirs": ["assets/"]}}')
+        r = run(base, published, "/", "--cache", f"--config={cfg}")
+        assert r.returncode == 1 and "assets/index-Bh-3x9aZ.js" in r.stdout, r.stdout + r.stderr
+        with open(cfg, "w") as f:
+            f.write('{"cache": {"hashed_dirs": ["assets"]}}')
+        r = run(base, published, "/", "--cache", f"--config={cfg}")
+        assert r.returncode == 2 and "hashed_dirs" in r.stderr, r.stderr
+        # --cache without the published files is refused.
+        r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
+        assert r.returncode == 2, r.stderr
     finally:
         server.shutdown()
         shutil.rmtree(tmp)

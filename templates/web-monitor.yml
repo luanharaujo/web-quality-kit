@@ -1,0 +1,37 @@
+# Copy to .github/workflows/web-monitor.yml. Replace the all-zero SHA with the release
+# commit, with the version in a comment (never @v1), like the other kit actions.
+#
+# Once a week: Lighthouse on the live site (phone, slow network) and, if a prober
+# keeps a log, availability. The run fails, and GitHub emails the owner, only when
+# a goal in web-budget.json "slo" is at risk or missed.
+name: Web monitor
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Monday 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read            # last week's history artifact
+
+concurrency:
+  group: web-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: web-budget.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - uses: luanharaujo/web-quality-kit/actions/web-monitor@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit
+        with:
+          base-url: https://example.org
+          paths: /
+          # probes-file: probes.csv   # "ISO time,1|0" per line, from your prober

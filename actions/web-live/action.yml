@@ -25,6 +25,18 @@ inputs:
   pages-artifact:
     description: '"true" = download this run''s GitHub Pages artifact and compare with it.'
     default: "false"
+  cache-check:
+    description: >
+      "true" = once live, check the real Cache-Control answered by the site: hashed
+      files max-age=31536000 + immutable, pages at most 600 s. Needs site-dir or
+      pages-artifact (the published files say which are hashed).
+    default: "false"
+  budget-file:
+    description: >
+      The repo's budget file, for cache-check: its cache.hashed_dirs and
+      cache.hashed_extra add hashed files (check out the repo first; missing =
+      only the kit's build folders).
+    default: web-budget.json
   tries:
     description: Rounds before giving up.
     default: "10"
@@ -52,6 +64,8 @@ runs:
         FROM_PAGES: ${{ inputs.pages-artifact }}
         TRIES: ${{ inputs.tries }}
         WAIT: ${{ inputs.wait-seconds }}
+        CACHE_CHECK: ${{ inputs.cache-check }}
+        BUDGET_FILE: ${{ inputs.budget-file }}
       run: |
         site="$SITE_DIR"
         if [[ "$FROM_PAGES" == "true" ]]; then
@@ -62,6 +76,7 @@ runs:
         args=(--base-url "$BASE_URL" --tries "$TRIES" --wait "$WAIT" --salt "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")
         [[ -n "$site" ]] && args+=(--site-dir "$site")
         for p in $PATHS; do args+=(--path "$p"); done
+        [[ "$CACHE_CHECK" == "true" ]] && args+=(--cache --config "$BUDGET_FILE")
         rc=0
         python3 "$KIT/scripts/live_check.py" "${args[@]}" > "$RUNNER_TEMP/live.md" || rc=$?
         cat "$RUNNER_TEMP/live.md" >> "$GITHUB_STEP_SUMMARY"
