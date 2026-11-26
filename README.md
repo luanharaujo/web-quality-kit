@@ -286,7 +286,7 @@ route once per run:
 | after each test | a 7-letter word typed into every editable search field (`type=search`, `role=searchbox`, `role=combobox`) sends at most 2 reads carrying the typed text | debounce: a read per key floods the server |
 | uploads | a progress bar with a value (`role=progressbar` + `aria-valuenow`, or `<progress value>`), one per file; the drop zone reacts to `dragenter`; after the answer, a thumbnail or the file type and size; one failed file does not stop the others and keeps its own retry without choosing the file again | a spinner hides the truth; a file name is not proof |
 
-New checks and the two modes: in `baseline` mode, a check that main's numbers were never measured with (`request-id` and `error-code` arrived in 1.17.0) only warns until main runs it; in `new` mode (a new repository, absolute rule) it fails from the first run, so a new repository updating the kit adds the id to its writes in the same pull request.
+New checks and the two modes: in `baseline` mode, a check that main's numbers were never measured with (`request-id` and `error-code` arrived in 1.20.0) only warns until main runs it; in `new` mode (a new repository, absolute rule) it fails from the first run, so a new repository updating the kit adds the id to its writes in the same pull request.
 
 Server side, a contract test per write route:
 
