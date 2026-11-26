@@ -460,6 +460,10 @@ def server_rows(s, bs, row, details):
         # counts too, not only the size.
         compare = bool(bs) and measured_on_main(name)
         before = Counter(ident(i) for i in bs.get(name, []))
+        if name == "baseline_unpaged":
+            # A route main already had in its baseline without the 3-vs-30 test
+            # that now gets the test is an old route, not a new unpaged one.
+            before.update(ident(i) for i in bs.get("baseline_routes", []))
         grew = False
         for i in base_items:
             if before[ident(i)] > 0:
@@ -491,6 +495,14 @@ def server_rows(s, bs, row, details):
     if s.get("fetch") or s.get("baseline_fetch"):
         tolerated("baseline_fetch", SERVER_LABELS["fetch"], s["fetch"], s["baseline_fetch"],
                   lambda c: f"`{c['file']}:{c['line']}` {c['rule']} · `{c['text'][:100]}`")
+    # A part main measured that this PR no longer runs (source or migrations
+    # removed from the config) would just drop out of the panel: red instead.
+    if bs and not s.get("errors"):
+        mine = s.get("measured") or {}
+        for kind in ("scans", "unpaged", "fetch"):
+            if measured_on_main("baseline_" + kind) and not mine.get(kind, True):
+                row(False, False, T(SERVER_LABELS[kind]), T("not measured in this PR"), T("main measured it"), "—")
+                hard.append(SERVER_LABELS[kind])
     return hard
 
 

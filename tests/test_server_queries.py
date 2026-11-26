@@ -144,6 +144,13 @@ check("a check main never ran is a first measure, not a growing baseline", panel
 main_with = dict(main_without, measured=dict(main_without["measured"], scans=True))
 check("the same baseline grown on a main that ran the check is red", panel(new_scan, main_with)[0] == 1)
 old_main = {k: v for k, v in fbr.items() if k not in ("measured", "unpaged", "baseline_unpaged", "fetch", "baseline_fetch")}
+off = dict(fbr, routes=[], uncovered=[], scans=[], measured=dict(fbr["measured"], fetch=False), fetch=[], baseline_fetch=[])
+rc_off, out_off = panel(off, dict(fbr, routes=[], uncovered=[], scans=[]))
+check("a PR that stops a part main measured (source removed) is red", rc_off == 1 and "not measured in this PR" in out_off, out_off)
+newly = dict(fbr, routes=[], uncovered=[], scans=[], baseline_routes=[])
+main_untested = dict(fbr, routes=[], uncovered=[], scans=[], baseline_unpaged=[r for r in fbr["baseline_unpaged"] if r["route"] != "GET /orders"],
+                     baseline_routes=[{"route": "GET /orders", "where": ""}])
+check("an old route that gets its first test may enter baseline.unpaged", panel(newly, main_untested)[0] == 0, panel(newly, main_untested)[1])
 old_out = panel(fbr, old_main)[1]
 new_rows = [l for l in old_out.splitlines() if l.startswith("| ") and ("without pagination" in l or "without a time limit" in l)]
 check("a main from kit 1.9 (no pagination or fetch numbers) does not block the update in baseline mode",
@@ -194,6 +201,10 @@ wk, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/worker_satisfies.
 check("fetch: a Worker exported with `satisfies` or through a variable may forward its request",
       [(c["file"].rsplit("/", 1)[-1], c["line"]) for c in wk] == [("worker_exported_var.ts", 5)], wk)
 check("fetch: signal: undefined sets no time limit", any(c["line"] == 5 and c["rule"] == "fetch-no-timeout" for c in wk), wk)
+rl = [(c["line"], c["rule"]) for c in rq]
+check("fetch: a protocol-relative URL (//host) is external", (13, "fetch-no-timeout") in rl, rq)
+check("fetch: a timeout from a const or a simple expression is checked against the max",
+      (15, "fetch-timeout-too-long") in rl and (16, "fetch-timeout-too-long") in rl and 17 not in [c["line"] for c in rq], rq)
 badbase = sq.check(cfg("bad", mode="baseline", routes=[], baseline={"fetch": ["fetch(u)"]}), ROOT)
 check("a malformed baseline.fetch is a configuration error, not a crash", any("baseline.fetch" in e for e in badbase["errors"]), badbase["errors"])
 check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)
