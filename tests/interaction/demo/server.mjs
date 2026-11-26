@@ -32,6 +32,9 @@ const server = http.createServer((req, res) => {
       if (key) answers.set(page + key, answer);
       return send(res, 201, answer);
     }
+    if (url.pathname === '/api/good-reads/slots') { // a slow read
+      return setTimeout(() => send(res, 200, ['tue-18h']), 800);
+    }
     if (/^\/api\/[a-z-]+\/(items|search|status)$/.test(url.pathname) && req.method === 'GET') {
       return send(res, 200, ['Handstand basics', 'Partner balance', 'Flexibility']);
     }

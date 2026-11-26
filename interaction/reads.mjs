@@ -2,15 +2,18 @@
 //   read-duplicate  the same read (URL and body) again within 3 s in one page
 //                   load or one action, when the first one did not fail;
 //                   allowed per route in "duplicate_reads_ok"
-//   loading-state   the first read of each route is held 1 s: within 400 ms
+//   loading-state   for the first read of each route, within 400 ms
 //                   something new says "loading" (aria-busy turned on, a
-//                   role=status/aria-live text changed, a progress bar
-//                   appeared); a status that was already there does not
-//                   count; routes nobody waits for go in "no_loading_state"
-//   debounce        after each test, every editable search field
+//                   role=status/aria-live text changed, a visible progress
+//                   bar appeared or was shown); a status that was already
+//                   there does not count; reads are never held or slowed;
+//                   routes nobody waits for go in "no_loading_state"
+//   debounce        after each passing test, every editable search field
 //                   (type=search, role=searchbox or combobox) gets a 7-letter
 //                   word typed; more than 2 reads carrying the typed text fail
 //
+// Only reads to the app itself count (same host, or the loopback API in
+// tests): analytics, maps and other third parties are ignored.
 // KIT_INTERACTION_READS=warn (default) records these as warnings: the panel
 // shows them, nothing fails. "enforce" makes them count like the other checks.
 import { routeKey, keyMatches } from './routes.mjs';
@@ -19,7 +22,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WORD = 'workout';
 const SEARCH = 'input[type=search],[role=searchbox],[role=combobox]';
 const DUPLICATE_WINDOW_MS = 3000;
-const READ_HOLD_MS = 1000;
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+// Page evaluate with a time limit: a synchronous XHR blocks the page.
+async function evaluate(page, fn, arg, ms = 300) {
+  try {
+    return await Promise.race([page.evaluate(fn, arg), sleep(ms).then(() => null)]);
+  } catch {
+    return null;
+  }
+}
 
 function listed(list, key) {
   return (list || []).some((item) => keyMatches(key, typeof item === 'string' ? item : item.route));
@@ -59,6 +71,19 @@ export class Reads {
     else this.o.warn(key, check, message);
   }
 
+  ours(request) {
+    try {
+      const page = new URL(this.o.page.url()).hostname;
+      const host = new URL(request.url()).hostname;
+      if (host === page) return true;
+      if (LOOPBACK.has(host) && LOOPBACK.has(page)) return true;
+      const site = (h) => h.split('.').slice(-2).join('.');
+      return site(host) === site(page); // api.example.com for www.example.com
+    } catch {
+      return false;
+    }
+  }
+
   skipped(key) {
     return listed(this.o.cfg.exclude, key);
   }
@@ -86,7 +111,7 @@ export class Reads {
   }
 
   onRequest(request) {
-    if (!Reads.isRead(request) || this.o.opts.mode !== 'slow') return;
+    if (!Reads.isRead(request) || this.o.opts.mode !== 'slow' || !this.ours(request)) return;
     const key = routeKey('GET', request.url());
     if (this.typing) {
       if (carried(request).some((v) => v && WORD.startsWith(v))) {
@@ -108,27 +133,23 @@ export class Reads {
     this.problem(key, 'read-duplicate', `the same read was sent again ${now - before.at} ms later for one page load or action (${new URL(request.url()).pathname}); fetch once and share the answer`);
   }
 
-  // Called from the route handler for reads. Returns after proceed().
+  // Called from the route handler for reads. The read goes on at once (never
+  // held); the page is then watched for a loading signal around it.
   async check(route, request, proceed) {
     const { page, cfg } = this.o;
     const key = routeKey('GET', request.url());
-    if (this.o.opts.mode !== 'slow' || this.typing || listed(cfg.no_loading_state, key) || this.skipped(key) || !this.o.claim('read', key)) {
-      return proceed();
-    }
+    await proceed();
+    if (this.o.opts.mode !== 'slow' || this.typing || !this.ours(request) || listed(cfg.no_loading_state, key) || this.skipped(key)) return;
+    const since = await evaluate(page, () => performance.now());
+    if (since === null || !this.o.claim('read', key)) return; // page blocked or gone: nothing to judge
     const started = Date.now();
-    let since = null;
-    try { since = await page.evaluate(() => performance.now()); } catch { since = null; }
     let how = '';
     while (!how && Date.now() - started <= cfg.busyWithinMs) {
-      try {
-        how = since === null ? '' : await page.evaluate((t) => (window.__kit ? window.__kit.loadingSince(t) : ''), since);
-      } catch { how = ''; }
+      how = (await evaluate(page, (t) => (window.__kit ? window.__kit.loadingSince(t) : ''), since)) || '';
       if (!how) await sleep(40);
     }
     if (how) this.o.pass(key, 'loading-state', how);
     else this.problem(key, 'loading-state', `nothing new showed the page was loading within ${cfg.busyWithinMs} ms (turn on aria-busy on the region, or put text in a role=status, or show a progress bar); a blank or frozen screen looks broken`);
-    await sleep(Math.max(0, READ_HOLD_MS - (Date.now() - started)));
-    return proceed();
   }
 
   // After the test body: type into each editable search field once per run.

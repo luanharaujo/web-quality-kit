@@ -3,7 +3,7 @@
 // breaks); the good pages must pass everything.
 import { test, expect, expectIdempotent } from 'web-quality-kit-interaction';
 
-const bookings = ['good', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error'];
+const bookings = ['good', 'good-reads', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error'];
 
 for (const v of bookings) {
   test(`booking ${v}`, async ({ page }) => {
@@ -25,7 +25,7 @@ for (const v of ['good', 'bad']) {
   });
 }
 
-for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search', 'list-readonly', 'list-prefilled', 'list-excluded', 'list-poll', 'list-static']) {
+for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search', 'list-readonly', 'list-prefilled', 'list-excluded', 'list-poll', 'list-static', 'list-hidden']) {
   test(`list ${v}`, async ({ page }) => {
     await page.goto(`/list.html?v=${v}`);
     await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });

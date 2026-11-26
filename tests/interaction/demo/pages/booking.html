@@ -2,7 +2,7 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>Booking demo</title></head>
 <body>
-<!-- ?v=good | bad-busy | bad-double | bad-optimistic | bad-error -->
+<!-- ?v=good | good-reads (two slow reads, then the write) | bad-busy | bad-double | bad-optimistic | bad-error -->
 <form id="f">
   <label>Name <input name="name" id="name"></label>
   <button type="submit" id="go">Book</button>
@@ -38,6 +38,10 @@ async function book() {
   const headers = { 'content-type': 'application/json' };
   if (key) headers['Idempotency-Key'] = key;
   try {
+    if (v === 'good-reads') { // look up the slot first: the write leaves well after the tap
+      await fetch(`/api/${v}/slots`);
+      await fetch(`/api/${v}/slots?day=2`);
+    }
     const r = await fetch(`/api/${v}/bookings`, { method: 'POST', headers, body: JSON.stringify({ name: form.name.value }) });
     if (!r.ok) throw new Error(String(r.status));
     key = null;

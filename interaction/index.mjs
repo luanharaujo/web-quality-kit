@@ -46,7 +46,7 @@ const PROBE = fs.readFileSync(path.join(HERE, 'probe.js'), 'utf8');
 export const DEFAULTS = {
   holdMs: 2000,
   busyWithinMs: 400,
-  userWindowMs: 1500,
+  userWindowMs: 5000, // a write up to 5 s after a tap is that tap's (reads may come first)
   // English by default. An app in another language sets "success" and "retry"
   // in its interaction.json (each replaces the whole pattern, so list English too).
   success: '\\b(booked|confirmed|reserved|scheduled|paid|saved|sent|success(fully)?|done)\\b',
@@ -352,7 +352,9 @@ class Interaction {
 
   async finish() {
     await Promise.allSettled([...this.pending]);
-    if (this.opts.mode !== 'off') await this.reads.debounce();
+    // Typing into the search of a failed test would change the screen before
+    // its failure screenshot: only after a test that went as expected.
+    if (this.opts.mode !== 'off' && this.testInfo.status === this.testInfo.expectedStatus) await this.reads.debounce();
     await Promise.allSettled([...this.pending]);
     if (!this.failures.length) return;
     for (const f of this.failures) this.testInfo.annotations.push({ type: 'kit-interaction', description: f });
