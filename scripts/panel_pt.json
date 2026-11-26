@@ -85,5 +85,7 @@
  "{n} log problems": "{n} problemas no log",
  "every route and every line": "toda rota e toda linha",
  "Service level objective (slo.json)": "Meta de serviço (slo.json)",
- "a valid target": "meta válida"
+ "a valid target": "meta válida",
+ "Unused code and dependencies (knip)": "Código e dependências sem uso (knip)",
+ "Unused code: configuration": "Código sem uso: configuração"
 }

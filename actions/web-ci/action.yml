@@ -58,6 +58,12 @@ inputs:
       WebP/AVIF, lazy, 1600 px / 300 KB). "absolute" = any case fails; "baseline" =
       a new case fails. Empty = off.
     default: ""
+  knip:
+    description: >
+      Unused files, exports and dependencies (knip, pinned by the kit; the repo's
+      knip.json is used when present). "absolute" = any finding fails (new repo);
+      "baseline" = a new finding fails, the count never grows (older repo). Empty = off.
+    default: ""
   headers-file:
     description: The _headers file the site publishes. Empty = site-dir/_headers.
     default: ""
@@ -144,6 +150,7 @@ runs:
         BUDGET_FILE: ${{ inputs.budget-file }}
         SITE_RULES: ${{ inputs.site-rules }}
         HEADERS_FILE: ${{ inputs.headers-file }}
+        KNIP: ${{ inputs.knip }}
         BUNDLE_DIR: ${{ inputs.bundle-dir }}
         BUNDLE_MAX_KB: ${{ inputs.bundle-max-kb }}
         AUDIT_DIRS: ${{ inputs.audit-dirs }}

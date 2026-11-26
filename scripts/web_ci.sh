@@ -22,6 +22,8 @@
 #   SITE_RULES      "absolute" or "baseline" = static rules on SITE_DIR (scripts/site_rules.py):
 #                   cache headers, fonts, images. Empty = off
 #   HEADERS_FILE    the published _headers file, default SITE_DIR/_headers
+#   KNIP            "absolute" or "baseline" = unused files, exports and dependencies
+#                   (knip, pinned in the kit's tools). Empty = off
 #   BUNDLE_DIR      folder whose .js/.css are summed; BUNDLE_MAX_KB its limit (gzip)
 #   AUDIT_DIRS      folders with a package-lock.json for npm audit, space separated
 #   TEST_COMMAND    shell command that runs the tests (output parsed for ok/FALHOU)
@@ -185,6 +187,17 @@ if [[ -n "${TEST_COMMAND:-}" ]]; then
   log "Tests"
   bash -c "$TEST_COMMAND" 2>&1 | tee "$OUT/tests.txt"
   args+=(--tests "$OUT/tests.txt" --tests-exit "${PIPESTATUS[0]}")
+  end
+fi
+
+if [[ -n "${KNIP:-}" ]]; then
+  [[ "$KNIP" == "absolute" || "$KNIP" == "baseline" ]] \
+    || { echo "::error::knip must be absolute or baseline, not '$KNIP'"; exit 1; }
+  log "Unused code (knip)"
+  # The repo's own knip config (knip.json, package.json "knip") is used when present.
+  "$BIN/knip" --reporter json --no-exit-code --no-progress > "$OUT/knip.json" 2> "$OUT/knip.log" \
+    || { echo "::error::knip did not run"; tail -20 "$OUT/knip.log"; exit 1; }
+  args+=(--knip "$OUT/knip.json" --knip-mode "$KNIP")
   end
 fi
 
