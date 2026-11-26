@@ -63,16 +63,22 @@ def pins(repo):
     return out
 
 
+ALIAS = "alias"
+
+
 def runtime_major(repo):
-    """The major written in .node-version or .nvmrc ("22", "v22.11.0"); None
-    for an alias (lts/*) or no file."""
+    """The major written in .node-version or .nvmrc ("22", "v22.11.0");
+    ALIAS when the file names an alias (lts/*, node): the runtime floats and
+    no engines pin can be tied to it; None when there is no version file."""
+    seen = False
     for name in (".node-version", ".nvmrc"):
         path = os.path.join(repo, name)
         if os.path.isfile(path):
+            seen = True
             m = re.match(r"^v?(\d+)(?:\.|$)", open(path).read().strip())
             if m:
                 return int(m.group(1))
-    return None
+    return ALIAS if seen else None
 
 
 def plan(repo, index):
@@ -85,6 +91,8 @@ def plan(repo, index):
     # major (engines "^18.17.0" next to .nvmrc 22) say what else is supported;
     # changing them is a decision, so they are left alone.
     major = runtime_major(repo)
+    if major == ALIAS:
+        return result   # the runtime follows an alias: engines is the supported floor, left alone
     if major is None:
         major = max(p[3] for p in found)[0]
     line = [p for p in found if p[3][0] == major]

@@ -44,7 +44,14 @@ runs:
         fi
         branch="kit/node-$target"
         if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
-          echo "Node $target: already proposed on $branch." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+          prs=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$branch" --state all --json number -q length)
+          if [[ "$prs" != "0" ]]; then
+            echo "Node $target: already proposed on $branch." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          # A branch without any PR is left over from a run that was cancelled
+          # or timed out: start again instead of hiding this version forever.
+          echo "::notice::$branch has no PR (an interrupted run): making it again."
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" >/dev/null
         fi
         python3 "$KIT/scripts/node_update.py" apply "$GITHUB_WORKSPACE" "$work/plan.json"
         python3 "$KIT/scripts/node_update.py" body "$work/plan.json" --lang "$LANG_PR" > "$work/body.md"
