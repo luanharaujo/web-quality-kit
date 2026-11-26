@@ -31,9 +31,14 @@ def project(extra=None):
         "src/index.js": 'import { used } from "./a.js";\nconsole.log(used);\n',
         "src/a.js": "export const used = 1;\nexport const unusedExport = 2;\n",
         "src/b.js": "export const orphan = 3;\n",
+        # The dependencies as npm ci leaves them (web-ci asks for them first).
+        "node_modules/left-pad/package.json": json.dumps({"name": "left-pad", "version": "1.3.0", "main": "index.js"}),
+        "node_modules/left-pad/index.js": "module.exports = () => '';\n",
     }
     files.update(extra or {})
     for name, text in files.items():
+        if text is None:
+            continue
         os.makedirs(os.path.dirname(os.path.join(d, name)), exist_ok=True)
         open(os.path.join(d, name), "w").write(text)
     return d
@@ -102,11 +107,30 @@ rc, panel = compare(None, clean)
 expect("absolute: a clean project (the repo's knip.json is honoured) passes", rc == 0 and not clean["metrics"]["knip"],
        (panel, clean["metrics"].get("knip")))
 
-bad = os.path.join(tempfile.mkdtemp(), "knip.json")
-open(bad, "w").write("not json")
-c = subprocess.run([sys.executable, HEALTH, "collect", "--knip", bad, "--knip-mode", "baseline"], capture_output=True, text=True)
-rc, panel = compare(None, json.loads(c.stdout))
-expect("an unreadable report is a configuration error, not a silent pass", rc == 1 and "configuration" in panel, panel)
+for label, text in (("unreadable", "not json"), ("empty", ""), ("without issues", "{}"),
+                    ("with an unknown kind", '{"issues": [{"file": "a.js", "brandNew": [{"name": "x"}]}]}')):
+    bad = os.path.join(tempfile.mkdtemp(), "knip.json")
+    open(bad, "w").write(text)
+    c = subprocess.run([sys.executable, HEALTH, "collect", "--knip", bad, "--knip-mode", "baseline"],
+                       capture_output=True, text=True)
+    rc, panel = compare(None, json.loads(c.stdout))
+    expect(f"a report {label} is a configuration error, not a silent pass", rc == 1 and "configuration" in panel, panel)
+
+r = subprocess.run([sys.executable, HEALTH, "compare", "-", "/dev/stdin", "--no-fail"], input=json.dumps(strict),
+                   capture_output=True, text=True)
+expect("absolute with --no-fail names the check as unused code, not the performance budget",
+       "::error::Unused code:" in r.stderr and "Performance budget" not in r.stderr, r.stderr)
+
+deps = project({"node_modules/left-pad/package.json": None, "node_modules/left-pad/index.js": None,
+                "package.json": json.dumps({"name": "demo", "private": True, "type": "module", "main": "src/index.js",
+                                           "devDependencies": {"vite": "7.0.0"}})})
+ci = open(os.path.join(KIT, "scripts", "web_ci.sh")).read()
+start = ci.index('if [[ -n "${KNIP:-}" ]]; then')
+r = subprocess.run(["bash", "-c", "log() { :; }; end() { :; }; args=();\n" + ci[start:ci.index("\nfi\n", start) + 4]],
+                   cwd=deps, capture_output=True, text=True,
+                   env=dict(os.environ, KIT=KIT, BIN=os.path.dirname(KNIP), OUT=tempfile.mkdtemp(), KNIP="baseline"))
+expect("dependencies not installed: a clear error asking for npm ci", r.returncode == 1 and "npm ci" in r.stdout,
+       r.stdout + r.stderr)
 
 if FAILS:
     print(f"\n{len(FAILS)} failed")

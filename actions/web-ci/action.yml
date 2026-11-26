@@ -63,6 +63,7 @@ inputs:
       Unused files, exports and dependencies (knip, pinned by the kit; the repo's
       knip.json is used when present). "absolute" = any finding fails (new repo);
       "baseline" = a new finding fails, the count never grows (older repo). Empty = off.
+      Install the repo's dependencies (npm ci) before this step: knip loads its configs.
     default: ""
   headers-file:
     description: The _headers file the site publishes. Empty = site-dir/_headers.
