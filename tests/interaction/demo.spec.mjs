@@ -43,6 +43,27 @@ test('list list-mocked (slow route handler in the test)', async ({ page }) => {
   await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });
 });
 
+// Typing starts a read; the draft saved later, with no tap, is not a tap's write.
+test('booking good-typed (autosave after typing)', async ({ page }) => {
+  await page.goto('/booking.html?v=good-typed');
+  await page.getByLabel('Name').pressSequentially('Ana', { delay: 50 });
+  await page.waitForTimeout(3000);
+});
+
+// A test with a fixed clock: the loading check must still see the signal.
+test('list list-clock (page.clock)', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-01-05T10:00:00Z'));
+  await page.goto('/list.html?v=list-clock');
+  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+});
+
+// A mocked read that never answers (a hung server) must not hang the test.
+test('list list-hung (read never answers)', async ({ page }) => {
+  await page.route('**/api/list-hung/items*', () => new Promise(() => {}));
+  await page.goto('/list.html?v=list-hung');
+  await page.waitForTimeout(1500);
+});
+
 test('list list-filter (A, B, A again is three actions)', async ({ page }) => {
   await page.goto('/list.html?v=list-filter');
   await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });

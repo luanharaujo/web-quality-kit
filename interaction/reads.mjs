@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WORD = 'workout';
 const SEARCH = 'input[type=search],[role=searchbox],[role=combobox]';
 const DUPLICATE_WINDOW_MS = 3000;
-const CHAIN_MAX_MS = 10000; // reads extend a tap's window, never past this
+const CHAIN_MAX_MS = 5000; // reads extend a tap's window, never past this
 const DEBOUNCE_NEEDS_MS = 8000; // time left in the test before typing in a field
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -114,7 +114,20 @@ export class Reads {
   async install() {
     const { page } = this.o;
     // Each tap, submit, typed or chosen value starts a new "action" (probe.js).
-    await page.exposeBinding('__kitAction', () => { this.newAction(); this.actionAt = Date.now(); this.activeUntil = 0; this.inflight.clear(); });
+    // Only a tap or submit opens a write window that its reads can extend; a
+    // typed or chosen value is a new action for the read checks only.
+    await page.exposeBinding('__kitAction', (_, kind) => {
+      this.newAction();
+      if (kind === 'tap') {
+        this.actionAt = Date.now();
+      } else if (Date.now() - this.actionAt < 500) {
+        return; // the "change" a tap causes by taking the focus from a field
+      } else {
+        this.actionAt = 0;
+      }
+      this.activeUntil = 0;
+      this.inflight.clear();
+    });
     page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) this.epoch++; });
     page.on('request', (request) => this.onRequest(request));
     page.on('requestfinished', (request) => this.settled(request, false));

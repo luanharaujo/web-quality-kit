@@ -3,7 +3,8 @@
 <head><meta charset="utf-8"><title>Booking demo</title></head>
 <body>
 <!-- ?v=good | good-reads (two slow reads, then the write) | good-key (reads, then a write guarded only by its Idempotency-Key)
-     | good-bg (a draft saved in the background 2.5 s after the tap) | bad-busy | bad-double | bad-optimistic | bad-error | bad-request-id -->
+     | good-bg (a draft saved in the background 2.5 s after the tap)
+     | good-typed (typing looks up slots, a draft is saved 1.7 s later, no tap) | bad-busy | bad-double | bad-optimistic | bad-error | bad-request-id -->
 <form id="f">
   <label>Name <input name="name" id="name"></label>
   <button type="submit" id="go">Book</button>
@@ -64,6 +65,15 @@ async function book() {
     busy = false;
     setBusy(false);
   }
+}
+// good-typed: typing looks up slots, and a draft is saved a while later
+if (v === 'good-typed') {
+  let timer = 0;
+  form.name.addEventListener('input', () => {
+    fetch(`/api/${v}/slots`);
+    clearTimeout(timer);
+    timer = setTimeout(() => fetch('/api/good-typed/drafts', { method: 'POST', body: '{}' }), 1700);
+  });
 }
 let tapAt = 0;
 form.addEventListener('submit', (e) => {

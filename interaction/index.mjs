@@ -155,7 +155,10 @@ class Interaction {
       if (!read && this.reads.typing) return handler(route, request);
       this.handled.add(request);
       const proceed = () => handler(route, request);
-      const run = read ? this.reads.check(route, request, proceed) : this.check(route, request, proceed);
+      // Reads are not waited for at the end of the test: a mocked read that
+      // never answers (a hung server) must not make the test time out.
+      if (read) return this.reads.check(route, request, proceed);
+      const run = this.check(route, request, proceed);
       this.pending.add(run);
       try { await run; } finally { this.pending.delete(run); }
     };
