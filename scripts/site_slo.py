@@ -43,9 +43,10 @@ def p75(values):
 
 
 def norm(path):
-    """One spelling per page: no query or fragment, percent-escapes decoded
-    (/música/ and /m%C3%BAsica/ are the same page)."""
-    return urllib.parse.unquote(re.sub(r"[?#].*$", "", path)) or "/"
+    """One spelling per page: no fragment, percent-escapes decoded (an
+    accented path and its escaped form are the same page). The query stays:
+    /?lang=en is another page than /."""
+    return urllib.parse.unquote(re.sub(r"#.*$", "", path)) or "/"
 
 
 def page_of(url, base=""):
@@ -53,9 +54,10 @@ def page_of(url, base=""):
     (/about to /about/) or a site in a subfolder (https://x.github.io/repo)
     must keep the name the history and --pages use."""
     path = norm(re.sub(r"^https?://[^/]+", "", url))
-    prefix = norm(re.sub(r"^https?://[^/]+", "", base or "")).rstrip("/")
-    if prefix and (path == prefix or path.startswith(prefix + "/")):
+    prefix = re.sub(r"\?.*$", "", norm(re.sub(r"^https?://[^/]+", "", base or ""))).rstrip("/")
+    if prefix and (path == prefix or path.startswith((prefix + "/", prefix + "?"))):
         path = path[len(prefix):] or "/"
+        path = "/" + path if path.startswith("?") else path
     return path
 
 

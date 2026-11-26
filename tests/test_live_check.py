@@ -72,6 +72,9 @@ def main():
     import live_check
     got = live_check.spread(["/_astro/a.js", "/_astro/b.js", "/_astro/c.js", "/assets/x.js"], 2)
     assert got == ["/_astro/a.js", "/assets/x.js"], got  # a declared folder is not hidden by a big one
+    many = [f"/_astro/{i:03d}.js" for i in range(100)]
+    picks = {tuple(live_check.spread(many, 30, f"run-{k}")) for k in range(5)}
+    assert len(picks) > 1, picks  # the sample moves from run to run
     tmp = tempfile.mkdtemp()
     live, published = os.path.join(tmp, "live"), os.path.join(tmp, "published")
     files = {"index.html": "<h1>cover</h1>", "adm/versao.json": '{"versao": "new"}'}
@@ -199,6 +202,13 @@ def main():
                        "/": "public, max-age=0, must-revalidate"}
         r = run(base, published, "/", "--cache")
         assert r.returncode == 1 and "_astro/app.Ab12Cd34.js" in r.stdout, r.stdout + r.stderr
+        # More hashed files than the sample: yellow, with "n of total".
+        lots = {f"_astro/f{i:02d}.Ab12Cd34.js": str(i) for i in range(5)}
+        write(live, lots)
+        write(published, lots)
+        Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/": "public, max-age=0, must-revalidate"}
+        r = run(base, published, "/", "--cache", "--cache-sample=2")
+        assert r.returncode == 0 and "sample of 2 of" in r.stdout and "🟢 every" not in r.stdout, r.stdout
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr

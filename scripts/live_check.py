@@ -83,13 +83,19 @@ def fetch_steady(url, tries=3, wait=2.0):
     return status, body, h
 
 
-def spread(files, sample):
+def spread(files, sample, seed=""):
     """At most `sample` files, taken in turn from each folder, so one big
-    build folder does not hide another (a declared assets/ next to _astro/)."""
+    build folder does not hide another (a declared assets/ next to _astro/).
+    The seed (the run id) moves the start in each folder, so runs check
+    different files over time instead of the same first ones."""
     folders = {}
     for f in files:
         folders.setdefault(f.rsplit("/", 1)[0], []).append(f)
-    out, queues = [], [list(v) for _, v in sorted(folders.items())]
+    shift = int(hashlib.sha256(seed.encode()).hexdigest(), 16) if seed else 0
+    out, queues = [], []
+    for _, v in sorted(folders.items()):
+        k = shift % len(v)
+        queues.append(v[k:] + v[:k])
     while len(out) < sample and any(queues):
         for q in queues:
             if q and len(out) < sample:
@@ -98,7 +104,7 @@ def spread(files, sample):
 
 
 def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rules.HASHED_DIRS, exceptions=(),
-                   tries=3, wait=2.0):
+                   tries=3, wait=2.0, seed=""):
     """(url, problem) for each page and hashed file whose live Cache-Control
     breaks the rules of site_rules.py (same exceptions: cache-html,
     cache-hashed). No cache-busting query here: the CDN's own answer is
@@ -128,7 +134,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
             out.append((path, f"HTTP {status}"))
         elif "immutable" in cc.lower() or (age is not None and age > site_rules.HTML_MAX_AGE):
             out.append((path, f"page cached too long: '{cc}'"))
-    chosen = spread(hashed, sample)
+    chosen = spread(hashed, sample, seed)
     for path in chosen:
         status, _, h = fetch_steady(url(path), tries, wait)
         cc = h.get("cache-control", "")
@@ -136,7 +142,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
             out.append((path, f"HTTP {status}"))
         elif (site_rules.max_age(cc, shortest=True) or 0) < site_rules.YEAR or "immutable" not in cc.lower():
             out.append((path, f"Cache-Control '{cc or 'none'}' (needs max-age={site_rules.YEAR}, immutable)"))
-    return out, len(chosen), pages
+    return out, len(chosen), pages, len(hashed)
 
 
 def check(base, path, site_dir, salt):
@@ -200,9 +206,9 @@ def main():
             print(f"::error::{a.config}: {e}", file=sys.stderr)
         return 2
     if a.cache:
-        problems, n, checked = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
+        problems, n, checked, total = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
                                      site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
-                                     wait=min(a.wait, 5))
+                                     wait=min(a.wait, 5), seed=a.salt)
         print(f"\n## Live cache (Cache-Control)\n\n{len(checked)} pages, {n} hashed files checked.\n")
         skipped = [p for p in paths if p not in checked]
         if skipped:
@@ -226,7 +232,11 @@ def main():
                   " no hashed file was checked (none found in the published files).")
             print("::warning::live cache: no hashed file was checked", file=sys.stderr)
         else:
-            print("🟢 every page and hashed file has the right Cache-Control.")
+            if n < total:
+                print(f"🟡 right Cache-Control on the {len(checked)} pages and on a sample of {n} of {total} hashed "
+                      "files (the sample changes every run).")
+            else:
+                print("🟢 every page and hashed file has the right Cache-Control.")
     return 0
 
 

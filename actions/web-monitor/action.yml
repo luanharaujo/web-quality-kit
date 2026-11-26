@@ -25,6 +25,11 @@ inputs:
   runs:
     description: Lighthouse runs per page (the week's number is their p75).
     default: "3"
+  history-name:
+    description: >
+      Name of the history artifact. Two sites in the same workflow (a matrix or
+      two jobs) need one name each, or they mix their weeks.
+    default: web-monitor-history
   start-history:
     description: >
       "true" = start the history over on purpose (when the last runs kept none
@@ -44,6 +49,7 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         START: ${{ inputs.start-history }}
+        NAME: ${{ inputs.history-name }}
       run: |
         mkdir -p "$RUNNER_TEMP/web-monitor"
         if [[ "$START" == "true" ]]; then
@@ -61,7 +67,7 @@ runs:
         fi
         found=""
         for run in $runs; do
-          if gh run download "$run" -R "$GITHUB_REPOSITORY" -n web-monitor-history -D "$RUNNER_TEMP/web-monitor" \
+          if gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$NAME" -D "$RUNNER_TEMP/web-monitor" \
                2>"$RUNNER_TEMP/web-monitor/gh.err"; then
             found="$run"; break
           fi
@@ -129,7 +135,7 @@ runs:
       if: always() && steps.judge.outcome == 'success'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: web-monitor-history
+        name: ${{ inputs.history-name }}
         path: ${{ runner.temp }}/web-monitor/history.jsonl
         retention-days: 90
         overwrite: true

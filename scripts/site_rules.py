@@ -250,7 +250,9 @@ def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS):
             age = max_age(cc, shortest=True) or 0
             if age < YEAR or "immutable" not in cc.lower():
                 out.append(case(rel, "cache-hashed", 0, "",
-                                f"Cache-Control '{cc or 'none'}' (needs max-age={YEAR}, immutable)"))
+                                f"Cache-Control '{cc or 'none'}' (needs max-age={YEAR}, immutable"
+                                + ("; a broader rule adds its own Cache-Control: put '! Cache-Control' in the "
+                                   "specific rule" if cc.lower().count("max-age") > 1 else "") + ")"))
     return out
 
 
