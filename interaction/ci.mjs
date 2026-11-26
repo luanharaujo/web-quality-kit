@@ -8,6 +8,9 @@ export const ciTimeout = (local, floor = 30_000) => (inCI() && local > 0 ? Math.
 // The failing-network pass breaks the test's own steps on purpose.
 const failing = () => process.env.KIT_INTERACTION_MODE === 'fail';
 
+/** Extra room in a test's time limit for one action the kit checks, in CI. */
+export const ciExtra = (ms = 20_000) => (inCI() ? ms : 0);
+
 /** A test's time limit: 90 s or more in CI, 60 s in the failing-network pass. */
 export const ciTestTimeout = (local) => ciTimeout(local, failing() ? 60_000 : 90_000);
 
