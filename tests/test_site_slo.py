@@ -56,7 +56,7 @@ def weeks(values, page="/", today="2026-11-26", skip=0):
             for i, v in enumerate(values)]
 
 
-def probe(downs, total=2000, now="2026-11-26T12:00:00+00:00", extra=""):
+def probe(downs, total=8100, now="2026-11-26T12:00:00+00:00", extra=""):
     end = datetime.datetime.fromisoformat(now)
     path = os.path.join(tempfile.mkdtemp(), "probes.csv")
     with open(path, "w") as f:
@@ -95,19 +95,21 @@ rc, out, _ = lab([1800], pages="/")
 expect("lab: every expected page measured is ok", rc == 0, out)
 rc, out, hist = lab([1800], site="https://x.github.io/repo", pages="/")
 expect("lab: a site in a subfolder keeps the page name", rc == 0 and hist[0]["page"] == "/", (out, hist))
+rc, out, hist = lab([1800], page="/r%C3%A9sum%C3%A9/", pages="/r\u00e9sum\u00e9/?v=1")
+expect("lab: an accent or a query in paths names the same page", rc == 0 and hist[0]["page"] == "/r\u00e9sum\u00e9/", (out, hist))
 rc, out, hist = lab([1800], page="/about", final="/about/", pages="/about")
 expect("lab: a redirect keeps the asked page name", rc == 0 and hist[0]["page"] == "/about", (out, hist))
 
 # --- availability over the prober's log -------------------------------------------
 rc, out, _ = probe(0)
 expect("probe: always up is ok", rc == 0 and "🟢 ok" in out and "100.000%" in out, out)
-# Goal 99.9% = 0.1% error budget. With 4000 probes: 1 down = 25% spent,
-# 2 down = 50% (at risk), 4 down = 100% (breached).
-rc, out, _ = probe(1, total=4000)
+# Goal 99.9% = 0.1% error budget. A probe every 5 minutes fills the 28 days
+# with 8064 probes: 2 down = 25% spent, 5 down = 62% (at risk), 9 down = 112%.
+rc, out, _ = probe(2)
 expect("probe: a quarter of the budget spent is still ok", rc == 0 and "🟢 ok" in out and "25%" in out, out)
-rc, out, _ = probe(2, total=4000)
-expect("probe: half of the budget spent is at risk", rc == 1 and "🟡 at risk" in out and "50%" in out, out)
-rc, out, _ = probe(4, total=4000)
+rc, out, _ = probe(5)
+expect("probe: more than half of the budget spent is at risk", rc == 1 and "🟡 at risk" in out and "62%" in out, out)
+rc, out, _ = probe(9)
 expect("probe: the whole budget spent is breached", rc == 1 and "🔴 breached" in out, out)
 rc, out, _ = probe(0, total=0)
 expect("probe: no probe in the window is an error (is the prober running?)", rc == 1 and "prober" in out, out)
@@ -120,10 +122,21 @@ open(path, "w").writelines([f"2026-11-{d:02d}T12:00:00+00:00,1\n" for d in (1, 2
                            [f"2026-11-26T{h:02d}:00:00+00:00,1\n" for h in range(12)])
 r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
                    capture_output=True, text=True)
-expect("probe: a long silence inside the window is shown", "silent for" in r.stdout, r.stdout)
+expect("probe: a long silence inside the window is unknown, not green",
+       r.returncode == 1 and "silent for" in r.stdout and "🟢" not in r.stdout, r.stdout)
+open(path, "w").write("2026-10-01T12:00:00+00:00,1\n2026-11-26T11:00:00+00:00,1\n")
+r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
+                   capture_output=True, text=True)
+expect("probe: a known prober silent from the window start until today is unknown",
+       r.returncode == 1 and "🔴 unknown" in r.stdout, r.stdout)
+open(path, "w").writelines(f"2026-11-26T{h:02d}:00:00+00:00,1\n" for h in range(12))
+r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
+                   capture_output=True, text=True)
+expect("probe: a new prober is a partial window (yellow, does not fail)",
+       r.returncode == 0 and "🟡 partial window" in r.stdout and "new prober" in r.stdout, r.stdout)
 rc, out, err = probe(0, extra="not a line\n")
 expect("probe: a bad line is a warning, not a crash", rc == 0 and "not 'ISO time,1|0'" in err, err)
-rc, out, _ = probe(0, total=1500, extra="2026-10-01T00:00:00+00:00,0\n" * 50)
+rc, out, _ = probe(0, extra="2026-10-01T00:00:00+00:00,0\n" * 50)
 expect("probe: probes before the window do not count", rc == 0 and "🟢 ok" in out, out)
 
 # --- goals in web-budget.json: stricter only --------------------------------------

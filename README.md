@@ -160,7 +160,7 @@ Copy `templates/web-monitor.yml`. Every Monday it runs Lighthouse on the live si
 - 🟡 at risk: this week is over the goal, or half of the availability error budget is spent. The run fails, so GitHub emails the owner.
 - 🔴 breached: the window's p75 is over the goal, or the whole error budget is spent.
 
-Pages are named as asked in `paths` (a redirect or a site in a subfolder of `base-url` keeps that name). It never turns green without a number: a page Lighthouse could not measure, a prober whose last line is more than a day old, or a history it cannot read fails the run. If the last runs kept no history at all, check why, then run it once by hand with `start-history`.
+Pages are named as asked in `paths` (a redirect or a site in a subfolder of `base-url` keeps that name). It never turns green without a number: a page Lighthouse could not measure, a prober whose last line is more than a day old or that went silent for more than a day inside the window (a new prober shows a yellow "partial window" until it has watched the whole window), or a history it cannot read fails the run. If the last runs kept no history at all, check why, then run it once by hand with `start-history`.
 
 Availability needs a prober that writes `ISO time,1|0` lines (`probes-file`); an outage itself is the prober's alarm, this job only answers "will we miss the goal this month?". Lab numbers are not real users' numbers: they are the same phone every week, which is what makes a trend.
 
