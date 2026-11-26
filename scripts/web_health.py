@@ -128,6 +128,8 @@ def knip_cases(path):
                     line = min((i.get("line") or 0) for i in item) if item else 0
                 else:
                     name, line = item.get("name", ""), item.get("line") or 0
+                    if item.get("namespace"):   # enum and namespace members: Enum.member
+                        name = f"{item['namespace']}.{name}"
                 cases.append({"file": entry.get("file", ""), "rule": rule, "line": line, "text": name})
     return cases
 

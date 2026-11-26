@@ -107,6 +107,13 @@ rc, panel = compare(None, clean)
 expect("absolute: a clean project (the repo's knip.json is honoured) passes", rc == 0 and not clean["metrics"]["knip"],
        (panel, clean["metrics"].get("knip")))
 
+ns = os.path.join(tempfile.mkdtemp(), "knip.json")
+open(ns, "w").write(json.dumps({"issues": [{"file": "a.ts", "enumMembers": [
+    {"name": "Red", "namespace": "Color", "line": 2}, {"name": "Red", "namespace": "Alert", "line": 9}]}]}))
+c = json.loads(subprocess.run([sys.executable, HEALTH, "collect", "--knip", ns], capture_output=True, text=True).stdout)
+expect("enum members keep their enum in the identity", sorted(x["text"] for x in c["metrics"]["knip"])
+       == ["Alert.Red", "Color.Red"], c["metrics"]["knip"])
+
 for label, text in (("unreadable", "not json"), ("empty", ""), ("without issues", "{}"),
                     ("with an unknown kind", '{"issues": [{"file": "a.js", "brandNew": [{"name": "x"}]}]}')):
     bad = os.path.join(tempfile.mkdtemp(), "knip.json")
