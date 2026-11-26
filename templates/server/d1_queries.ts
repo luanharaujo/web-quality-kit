@@ -105,15 +105,16 @@ export function countQueries<T extends object>(db: T, queries: QueryRecord[]): T
   }) as T
 }
 
-// Path → route template: numbers, UUIDs and long tokens become :id.
+// Path → route template: numbers, ids, tokens, e-mails, encoded text and
+// words with capitals become :id; plain lowercase words (users, by-date) and
+// version segments (v1) stay. A lowercase value in the path (/users/jane) is
+// indistinguishable from a word: pass opts.route with the app's own route
+// pattern when a path can carry one.
 export function routeTemplate(path: string): string {
   return (
     path
       .split('/')
-      // Only plain lowercase words stay (users, orders, by-date); anything
-      // else (numbers, ids, tokens, e-mails, encoded text, names with capitals)
-      // becomes :id, so the log never carries a value from the path.
-      .map((part) => (part === '' || /^[a-z][a-z_-]{0,31}$/.test(part) ? part : ':id'))
+      .map((part) => (part === '' || /^[a-z][a-z_-]{0,31}$/.test(part) || /^v\d{1,2}$/.test(part) ? part : ':id'))
       .join('/')
       .replace(/\/+$/, '') || '/'
   )

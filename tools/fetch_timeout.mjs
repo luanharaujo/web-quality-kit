@@ -7,7 +7,10 @@
 // relative URL ("/x", `/x/${id}`), a URL on an --internal host, and a signal
 // that is any other expression (an AbortController's signal, a variable):
 // the time limit is then set elsewhere. A URL held in a variable counts as
-// external: the code cannot show where it goes.
+// external: the code cannot show where it goes. fetch(new Request(url, init))
+// is read as fetch(url, init) (a signal in either init counts), and a Worker
+// forwarding its own incoming request (the first parameter of a `fetch`
+// handler) is not an outbound call to a third party.
 import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
@@ -54,6 +57,23 @@ function urlStart(node) {
   return null
 }
 
+const isNewRequest = (n) => n && ts.isNewExpression(n) && n.expression.getText() === 'Request' && n.arguments?.length
+
+// `request` in `async fetch(request, env)`: the incoming request of the handler.
+function isIncomingRequest(node) {
+  if (!ts.isIdentifier(node)) return false
+  for (let p = node.parent; p; p = p.parent) {
+    if (!ts.isFunctionLike(p)) continue
+    const first = p.parameters?.[0]
+    if (!first || !ts.isIdentifier(first.name) || first.name.text !== node.text) continue
+    const owner = ts.isMethodDeclaration(p) ? p.name
+      : ts.isPropertyAssignment(p.parent) ? p.parent.name
+      : ts.isFunctionDeclaration(p) ? p.name : null
+    return !!owner && owner.getText() === 'fetch'
+  }
+  return false
+}
+
 function isInternal(start) {
   if (start === null) return false
   if (start === '' || start.startsWith('/') || start.startsWith('.')) return true
@@ -87,8 +107,16 @@ for (const t of targets) {
         const plain = (ts.isIdentifier(callee) && callee.text === 'fetch') ||
           (ts.isPropertyAccessExpression(callee) && callee.name.text === 'fetch' &&
            ts.isIdentifier(callee.expression) && ['globalThis', 'self', 'window'].includes(callee.expression.text))
-        if (plain && node.arguments.length && !isInternal(urlStart(node.arguments[0]))) {
-          const sig = signalOf(node.arguments[1])
+        let [target, init] = node.arguments
+        let sig = null
+        if (isNewRequest(target)) {
+          // fetch(new Request(url, init), init2): the URL is url, a signal may be in either init.
+          sig = signalOf(target.arguments[1])
+          target = target.arguments[0]
+        }
+        if (plain && target && !isIncomingRequest(target) && !isInternal(urlStart(target))) {
+          const outer = signalOf(init)
+          if (outer !== null) sig = outer
           if (sig === null) add(node, 'fetch-no-timeout')
           else if (sig !== 'unknown' && ts.isCallExpression(sig) && sig.expression.getText() === 'AbortSignal.timeout') {
             const arg = sig.arguments[0]
