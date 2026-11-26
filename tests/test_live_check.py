@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -219,6 +220,17 @@ def main():
         for name in side:
             os.remove(os.path.join(live, name))
             os.remove(os.path.join(published, name))
+        # Only a non-page path: nothing green, it says no page was checked.
+        r = run(base, published, "/adm/versao.json", "--cache")
+        assert "no page was checked" in r.stdout and "🟢 every" not in r.stdout, r.stdout
+        # A header that is right on the second round (CDN catching up) passes.
+        Quiet.rules = {"/": "public, max-age=3600"}
+        def fix_later():
+            time.sleep(0.15)
+            Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/": "public, max-age=0, must-revalidate"}
+        threading.Thread(target=fix_later, daemon=True).start()
+        r = run(base, published, "/", "--cache", "--wait=0.3")
+        assert r.returncode == 0 and "asking again" in r.stderr, r.stdout + r.stderr
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr
