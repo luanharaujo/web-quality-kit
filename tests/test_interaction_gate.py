@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Proofs for scripts/interaction_gate.py: route scan, coverage, new vs baseline."""
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,19 @@ class Normalize(unittest.TestCase):
         script = f"import {{ routeKey }} from '{js}'; console.log(JSON.stringify({json.dumps(cases)}.map(p => routeKey('post', p))))"
         out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(out.stdout), [g.route_key("post", p) for p in cases])
+
+
+class Words(unittest.TestCase):
+    def test_english_defaults_and_app_override(self):
+        js = (HERE.parent / "interaction" / "index.mjs").as_uri()
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump({"success": "\\b(gebucht|booked)\\b", "retry": "(erneut|retry)"}, f)
+        script = (f"import {{ DEFAULTS, loadConfig }} from '{js}'; const s = new RegExp(DEFAULTS.success, 'i'), r = new RegExp(DEFAULTS.retry, 'i');"
+                  "const c = loadConfig(), cs = new RegExp(c.success, 'i'), cr = new RegExp(c.retry, 'i');"
+                  "console.log(JSON.stringify([s.test('Slot booked'), s.test('Book'), r.test('Try again'), cs.test('Termin gebucht'), cr.test('Erneut senden'), c.holdMs]))")
+        env = dict(os.environ, KIT_INTERACTION_CONFIG=f.name)
+        out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True, env=env)
+        self.assertEqual(json.loads(out.stdout), [True, False, True, True, True, 2000])
 
 
 class Scan(unittest.TestCase):

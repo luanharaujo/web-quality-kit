@@ -215,7 +215,10 @@ repository's `routes-command`) and every route needs an end-to-end pass
 through the checks and a passing contract. Write handlers the scan cannot
 name are counted too, so they cannot hide. `interaction.json` (template in
 `templates/`) holds the exceptions, each with a reason: `optimistic`,
-`no_ui` (webhooks: contract only) and `exclude`.
+`no_ui` (webhooks: contract only) and `exclude`. The success and retry
+words are English by default; an app in another language sets `success` and
+`retry` (regular expressions) in `interaction.json`, listing its own words and
+the English ones, since each key replaces the whole default pattern.
 
 `mode: new` (new repositories) makes any gap red. `mode: baseline`
 (existing ones) only fails when something gets
