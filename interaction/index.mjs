@@ -148,6 +148,12 @@ class Interaction {
     report({ type: 'check', route: key, check, ok: false, message, test: this.testInfo.titlePath.join(' > ') });
   }
 
+  // A problem that does not fail yet (checks being rolled out): the panel
+  // lists it, the test and the gate do not fail.
+  warn(key, check, message) {
+    report({ type: 'warning', route: key, check, ok: false, message, test: this.testInfo.titlePath.join(' > ') });
+  }
+
   pass(key, check, note = '') {
     report({ type: 'check', route: key, check, ok: true, message: note, test: this.testInfo.titlePath.join(' > ') });
   }

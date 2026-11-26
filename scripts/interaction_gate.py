@@ -183,6 +183,7 @@ def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
     # incomplete scan must not make the panel look covered.
     declared = [r for r in sorted(set(routes["routes"]) | set(undeclared)) if not listed(cfg["exclude"], r)]
     contracts_ok = {e["route"] for e in entries if e.get("type") == "contract" and e.get("ok")}
+    warnings = sorted({f'{e["route"]} {e.get("check")}' for e in entries if e.get("type") == "warning"})
     failing = sorted({f'{e["route"]} {e.get("check") or "contract"}' for e in entries
                       if e.get("type") in ("check", "contract") and e.get("ok") is False})
     without_e2e = [r for r in declared if not listed(cfg["no_ui"], r) and not any(key_matches(s, r) for s in seen)]
@@ -195,6 +196,7 @@ def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
         "without_e2e": without_e2e,
         "without_contract": without_contract,
         "failing": failing,
+        "warnings": warnings,
         "unmapped": routes.get("unmapped", []),
         "seen_undeclared": undeclared,
         "where": {r: routes.get("where", {}).get(r, "") for r in routes["routes"]},
@@ -202,11 +204,12 @@ def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
 
 
 TEXT = {
-    "title": "Actions that save data",
+    "title": "Interaction checks (saving and loading data)",
     "covered": "write routes under the checks (e2e + contract)",
     "without_e2e": "write routes no end-to-end test went through",
     "without_contract": "write routes without an idempotency contract test",
     "failing": "checks failing (busy state, double tap, early success, error and retry, upload, contract)",
+    "warnings": "read checks in warning mode (loading state, duplicate reads, search debounce): only warn for now",
     "unmapped": "write handlers the scan could not name (give them a route table or use routes-command)",
     "undeclared": "writes seen in the tests that the route scan missed (counted as routes above)",
     "new": "new",
@@ -260,6 +263,10 @@ def compare(base: dict | None, cur: dict, mode: str, lang: str) -> tuple[str, bo
         for i in (new_items if red else items)[:15]:
             at = cur.get("where", {}).get(i, "")
             lines.append(f"  - {'**' + t['new'] + '** ' if red and mode != 'new' else ''}`{i}`" + (f" ({at})" if at else ""))
+    if cur.get("warnings"):
+        lines.append(f"🟡 {len(cur['warnings'])} {t['warnings']}")
+        for i in cur["warnings"][:15]:
+            lines.append(f"  - `{i}`")
     if cur.get("seen_undeclared"):
         lines.append(f"ℹ️ {len(cur['seen_undeclared'])} {t['undeclared']}: " + ", ".join(f"`{s}`" for s in cur["seen_undeclared"][:10]))
     if mode != "new" and base is None:

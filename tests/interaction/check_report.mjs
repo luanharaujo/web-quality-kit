@@ -26,6 +26,8 @@ const EXPECTED = {
     good: [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
     'upload-good': [], 'upload-bad': ['upload-confirm', 'upload-dropzone', 'upload-progress'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
+    'list-readonly': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'],
+    'list-excluded': null, // excluded: must never be checked
   },
   fail: {
     good: [], 'bad-busy': [], 'bad-double': [], 'bad-optimistic': [], 'bad-error': ['error-keeps-input', 'error-retry'],
@@ -42,7 +44,7 @@ const got = { slow: failures(slow, 'check'), fail: failures(fail, 'check'), cont
 // The good pages must have been through every check (a check that never ran
 // proves nothing).
 const RAN = {
-  slow: { good: ['busy', 'double', 'optimistic'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'] },
+  slow: { good: ['busy', 'double', 'optimistic'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
   fail: { good: ['error-alert', 'error-keeps-input', 'error-retry', 'error-retry-sends'], 'upload-good': ['upload-independent'] },
 };
 const ran = (entries, p) => new Set(entries.filter((e) => e.type === 'check' && page(e.route) === p).map((e) => e.check));
@@ -58,6 +60,12 @@ for (const [pass, pages] of Object.entries(RAN)) {
 }
 for (const [pass, pages] of Object.entries(EXPECTED)) {
   for (const [p, want] of Object.entries(pages)) {
+    if (want === null) { // the excluded route (…/items) must never be checked
+      const ok = !(pass === 'slow' ? slow : fail).some((e) => e.type === 'check' && e.route.endsWith(`/${p}/items`));
+      console.log(`${ok ? 'ok  ' : 'FAIL'} ${pass} ${p}: ${ok ? 'never checked (excluded)' : 'checked although excluded'}`);
+      if (!ok) bad++;
+      continue;
+    }
     if (!got[pass][p]) { console.log(`FAIL ${pass} ${p}: never checked`); bad++; continue; }
     const have = [...got[pass][p]].sort();
     const ok = JSON.stringify(have) === JSON.stringify([...want].sort());

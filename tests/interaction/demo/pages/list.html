@@ -2,41 +2,56 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>List demo</title></head>
 <body>
-<!-- ?v=list-good | list-dup | list-noload | list-search -->
+<!-- ?v= list-good | list-dup | list-noload | list-search (bad, one rule each)
+     list-readonly | list-prefilled | list-filter | list-excluded | list-poll (good: no false alarm)
+     list-static (bad: a status that was always there is not a loading state) -->
 <label>Search <input type="search" id="q"></label>
+<label>Level <select id="level"><option value="a">All</option><option value="b">Beginner</option></select></label>
 <section id="results" aria-label="Classes"></section>
 <p role="status" id="status"></p>
+<p role="status" id="online">Online</p>
 <script>
 const v = new URLSearchParams(location.search).get('v') || 'list-good';
 const results = document.getElementById('results');
 const status = document.getElementById('status');
+if (v !== 'list-static') document.getElementById('online').remove(); // list-static: a status always on the page
+const q = document.getElementById('q');
+if (v === 'list-readonly') {
+  // a custom select: readonly combobox the kit must not try to type into
+  q.type = 'text';
+  q.setAttribute('role', 'combobox');
+  q.readOnly = true;
+}
+if (v === 'list-prefilled') q.value = 'abc';
 const loading = (on) => {
-  if (v === 'list-noload') return;            // blank until the data arrives
+  if (v === 'list-noload' || v === 'list-static') return; // nothing new says "loading"
   results.setAttribute('aria-busy', String(on));
   status.textContent = on ? 'Loading classes...' : '';
 };
 const show = (items) => { results.replaceChildren(...items.map((t) => Object.assign(document.createElement('p'), { textContent: t }))); };
 
-async function load() {
+async function load(level) {
   loading(true);
-  const r = await fetch(`/api/${v}/items`);
-  if (v === 'list-dup') await fetch(`/api/${v}/items`); // the same read again
+  const r = await fetch(`/api/${v}/items${level ? `?level=${level}` : ''}`);
+  if (v === 'list-dup' || v === 'list-excluded') await fetch(`/api/${v}/items`); // the same read again
   show(await r.json());
   loading(false);
 }
 
 let timer = null;
-async function search(q) {
+async function search(text) {
   loading(true);
-  const r = await fetch(`/api/${v}/search?q=${encodeURIComponent(q)}`);
+  const r = await fetch(`/api/${v}/search?q=${encodeURIComponent(text)}`);
   show(await r.json());
   loading(false);
 }
-document.getElementById('q').addEventListener('input', (e) => {
+q.addEventListener('input', (e) => {
   if (v === 'list-search') { search(e.target.value); return; } // a read per key
   clearTimeout(timer);
-  timer = setTimeout(() => search(e.target.value), 300);
+  timer = setTimeout(() => (e.target.value ? search(e.target.value) : load()), 300);
 });
+document.getElementById('level').addEventListener('change', (e) => load(e.target.value));
+if (v === 'list-poll') setInterval(() => fetch(`/api/${v}/status`), 300); // polling, listed in interaction.json
 load();
 </script>
 </body>

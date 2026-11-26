@@ -1,0 +1,11 @@
+{
+  "duplicate_reads_ok": [
+    { "route": "GET /api/list-poll/status", "reason": "polled on purpose (demo of an allowed duplicate)" }
+  ],
+  "no_loading_state": [
+    { "route": "GET /api/list-poll/status", "reason": "background polling, no screen waits for it" }
+  ],
+  "exclude": [
+    { "route": "GET /api/list-excluded/items", "reason": "demo of a route taken out of every check" }
+  ]
+}

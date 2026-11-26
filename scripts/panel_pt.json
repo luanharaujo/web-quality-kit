@@ -63,7 +63,7 @@
  "Images": "Imagens",
  "Site rules: configuration": "Regras do site: configuração",
  "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json).",
- "Actions that save data": "Ações que gravam dados",
+ "Interaction checks (saving and loading data)": "Verificações de interação (gravar e carregar dados)",
  "write routes under the checks (e2e + contract)": "rotas de gravação sob as verificações (e2e + contrato)",
  "write routes no end-to-end test went through": "rotas de gravação sem teste de ponta a ponta",
  "write routes without an idempotency contract test": "rotas de gravação sem teste de contrato de idempotência",
@@ -76,5 +76,6 @@
  "not measured in this PR": "não medido neste PR",
  "main measured it": "a main mediu",
  "Site rules: note": "Regras do site: aviso",
- "{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: add \"{folder}\" to \"cache\": {{\"hashed_dirs\": [...]}} so its cache is checked": "{folder} parece saída de build ({hits} de {total} nomes com hash), mas não está declarada: ponha \"{folder}\" em \"cache\": {{\"hashed_dirs\": [...]}} para conferir o cache dela"
+ "{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: add \"{folder}\" to \"cache\": {{\"hashed_dirs\": [...]}} so its cache is checked": "{folder} parece saída de build ({hits} de {total} nomes com hash), mas não está declarada: ponha \"{folder}\" em \"cache\": {{\"hashed_dirs\": [...]}} para conferir o cache dela",
+ "read checks in warning mode (loading state, duplicate reads, search debounce): only warn for now": "verificações de leitura em modo aviso (carregando, leitura duplicada, debounce da busca): por enquanto só avisam"
 }
