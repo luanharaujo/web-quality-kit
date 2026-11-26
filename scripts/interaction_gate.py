@@ -184,7 +184,11 @@ def load_config(path: str | None) -> dict:
 KNOWN_CHECKS = ["busy", "contract", "debounce", "double", "error-alert", "error-code", "error-keeps-input",
                 "error-retry", "error-retry-sends", "loading-state", "optimistic", "read-duplicate", "request-id",
                 "upload-confirm", "upload-dropzone", "upload-independent", "upload-progress"]
-CHECKS_BEFORE_1_20 = set(KNOWN_CHECKS) - {"request-id", "error-code"}  # main saved by an older kit
+# What a main saved before checks_known existed (kit < 1.20.0) was measured
+# with. Frozen: a check added later must not count against such a main.
+CHECKS_BEFORE_1_20 = {"busy", "contract", "debounce", "double", "error-alert", "error-keeps-input", "error-retry",
+                      "error-retry-sends", "loading-state", "optimistic", "read-duplicate", "upload-confirm",
+                      "upload-dropzone", "upload-independent", "upload-progress"}
 
 
 def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
