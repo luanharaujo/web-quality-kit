@@ -50,7 +50,7 @@ Config (server-queries.json, paths relative to the repository root):
 5. Pagination: each tested list route, with more rows than a page, called
    with ?limit=size must return exactly size items and a next cursor/page;
    with no limit, and with a limit far above the cap, it must stay at or under
-   the cap. A route that fails is red
+   the cap (refusing that limit with 400 or 422 also passes). A route that fails is red
    (baseline mode: tolerated if in baseline.unpaged, which may not grow).
 6. Time limit: every fetch to an external host needs a signal
    (AbortSignal.timeout(ms) up to max_ms, or an AbortController); a binding
@@ -285,9 +285,19 @@ def paging(cfg, root, tmp, server, routes, headers_for):
             path = r.get("path") or key.split(" ", 1)[1]
             url = server.base + (with_param(path, param, size) if step == "page"
                                  else with_param(path, param, over) if step == "over" else path)
+            if step != "page":
+                # A new URL after the reseed, so a response cache cannot answer with the old rows.
+                url = with_param(url, "_rows", n)
             try:
                 _, _, data = get(url, {**headers, **r.get("headers", {})}, body=True)
                 items, nxt = page_of(data, r.get("items_field") or p.get("items_field"), fields)
+            except urllib.error.HTTPError as e:
+                # Refusing a limit above the cap (400 or 422) keeps the cap too.
+                if step == "over" and e.code in (400, 422):
+                    result.setdefault(key, "")
+                else:
+                    result[key] = f"{step}: {e}"
+                continue
             except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
                 result[key] = f"{step}: {e}"
                 continue
@@ -404,8 +414,9 @@ def leaks(root):
 def check(cfg, root):
     out = {"mode": cfg.get("mode", "absolute"), "routes": [], "uncovered": [], "baseline_routes": [],
            "scans": [], "baseline_scans": [], "errors": [], "indexes": bool(cfg.get("migrations")),
-           "measured": {"routes": True, "scans": bool(cfg.get("migrations")), "unpaged": bool(cfg.get("routes")),
-                        "fetch": bool(cfg.get("source"))},
+           # Set only once each part has really run: a main whose server or
+           # lint failed has no numbers for it, so the PR's run is a first measure.
+           "measured": {"routes": True, "scans": False, "unpaged": False, "fetch": False},
            "unpaged": [], "baseline_unpaged": [], "fetch": [], "baseline_fetch": []}
     err = out["errors"]
     if out["mode"] not in ("absolute", "baseline"):
@@ -441,11 +452,15 @@ def check(cfg, root):
     for d in cfg.get("source", []):
         if not os.path.exists(os.path.join(root, d)):
             err.append(f"source: {d} does not exist (a typo would switch the lint rules off)")
+    fetch_base = base.get("fetch", []) if baseline_mode else []
+    if not isinstance(fetch_base, list) or not all(isinstance(c, dict) and {"file", "text"} <= c.keys() for c in fetch_base):
+        err.append('baseline.fetch: each entry must be {"file": ..., "text": ...}')
+        fetch_base = []
     try:
         cases, _ = fetch_cases(cfg, root)
         # Counted per (file, line text): a second identical call in the same
         # file is a new case, not covered by the first one's baseline entry.
-        known = collections.Counter((c["file"], c["text"]) for c in base.get("fetch", [])) if baseline_mode else collections.Counter()
+        known = collections.Counter((c["file"], c["text"]) for c in fetch_base)
         for c in cases:
             k = (c["file"], c["text"])
             if known[k] > 0:
@@ -453,6 +468,7 @@ def check(cfg, root):
                 out["baseline_fetch"].append(c)
             else:
                 out["fetch"].append(c)
+        out["measured"]["fetch"] = bool(cfg.get("source"))
     except (RuntimeError, ValueError) as e:
         err.append(str(e))
 
@@ -472,6 +488,7 @@ def check(cfg, root):
         for key, problem in sorted(pages.items()):
             if problem:
                 (out["baseline_unpaged"] if key in paged_ok else out["unpaged"]).append({"route": key, "problem": problem})
+        out["measured"]["unpaged"] = True
     except (RuntimeError, KeyError, json.JSONDecodeError) as e:
         err.append(f"server: {e}")
         return out
@@ -504,6 +521,7 @@ def check(cfg, root):
                     continue
                 item = {"table": table, "sql": norm_sql(q), "plan": detail}
                 (out["baseline_scans"] if (table, norm_sql(q)) in known else out["scans"]).append(item)
+        out["measured"]["scans"] = True
     return out
 
 

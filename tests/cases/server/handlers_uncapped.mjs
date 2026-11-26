@@ -1,6 +1,7 @@
 // Pagination shapes the check must catch or let through with a reason:
 //  - /orders pages with ?limit but never caps it: ?limit=100000 returns every row;
-//  - /totals is a grouped summary (one row per status): it does not page by nature.
+//  - /totals is a grouped summary (one row per status): it does not page by nature;
+//  - /strict refuses a limit above its cap with 400: that keeps the cap too.
 export async function handle(req, env) {
   const url = new URL(req.url)
   const { pathname } = url
@@ -16,6 +17,13 @@ export async function handle(req, env) {
   if (req.method === 'GET' && pathname === '/totals') {
     const { results } = await env.DB.prepare('SELECT customer_id % 3 AS bucket, SUM(total) AS total FROM orders GROUP BY bucket').all()
     return Response.json({ items: results })
+  }
+  if (req.method === 'GET' && pathname === '/strict') {
+    const asked = Number(url.searchParams.get('limit')) || 20
+    if (asked > 50) return Response.json({ error: 'limit above 50' }, { status: 400 })
+    const after = Number(url.searchParams.get('cursor')) || 0
+    const { results } = await env.DB.prepare('SELECT id, total FROM orders WHERE id > ? ORDER BY id LIMIT ?').bind(after, asked + 1).all()
+    return Response.json({ items: results.slice(0, asked), next: results.length > asked ? String(results[asked - 1].id) : null })
   }
   return new Response('not found', { status: 404 })
 }

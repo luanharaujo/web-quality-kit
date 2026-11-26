@@ -7,3 +7,6 @@ export default { async fetch(request, env) {
   return fetch(request)
 }}
 const other = (request) => fetch(request)
+const api = { fetch(url) { return fetch(url) } }
+const late = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(999999) })
+const early = (u, init) => fetch(u, { signal: AbortSignal.timeout(5000), ...init })

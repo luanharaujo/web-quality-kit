@@ -59,7 +59,9 @@ function urlStart(node) {
 
 const isNewRequest = (n) => n && ts.isNewExpression(n) && n.expression.getText() === 'Request' && n.arguments?.length
 
-// `request` in `async fetch(request, env)`: the incoming request of the handler.
+// `request` in `async fetch(request, env)` of the default export: the incoming
+// request of a Worker handler. A one-parameter fetch(url) wrapper (a client's
+// api.fetch) is not a handler, so its calls stay under the rule.
 function isIncomingRequest(node) {
   if (!ts.isIdentifier(node)) return false
   for (let p = node.parent; p; p = p.parent) {
@@ -69,7 +71,9 @@ function isIncomingRequest(node) {
     const owner = ts.isMethodDeclaration(p) ? p.name
       : ts.isPropertyAssignment(p.parent) ? p.parent.name
       : ts.isFunctionDeclaration(p) ? p.name : null
-    return !!owner && owner.getText() === 'fetch'
+    if (!owner || owner.getText() !== 'fetch' || p.parameters.length < 2) return false
+    const obj = ts.isMethodDeclaration(p) || ts.isPropertyAssignment(p.parent) ? (ts.isMethodDeclaration(p) ? p.parent : p.parent.parent) : null
+    return !!obj && ts.isObjectLiteralExpression(obj) && !!obj.parent && ts.isExportAssignment(obj.parent)
   }
   return false
 }
@@ -83,14 +87,17 @@ function isInternal(start) {
   return internal.has(host) || host === 'localhost' || host === '127.0.0.1'
 }
 
+// The signal the options end up with: the last explicit `signal` wins over an
+// earlier spread; a spread after it (or with none) may carry one: 'unknown'.
 function signalOf(opts) {
   if (!opts || !ts.isObjectLiteralExpression(opts)) return opts ? 'unknown' : null
+  let sig = null
   for (const p of opts.properties) {
-    if (ts.isSpreadAssignment(p)) return 'unknown' // ...init may carry a signal
+    if (ts.isSpreadAssignment(p)) { sig = 'unknown'; continue }
     const name = p.name && p.name.getText()
-    if (name === 'signal') return ts.isPropertyAssignment(p) ? p.initializer : 'unknown'
+    if (name === 'signal') sig = ts.isPropertyAssignment(p) ? p.initializer : 'unknown'
   }
-  return null
+  return sig
 }
 
 const cases = []
