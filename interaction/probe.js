@@ -26,6 +26,9 @@
   const realNow = performance.now.bind(performance);
   const realOrigin = performance.timeOrigin;
   const now = () => realNow();
+  // Key times, for the debounce check: how fast the kit's typing really was.
+  k.keyTimes = [];
+  document.addEventListener('keydown', () => { k.keyTimes.push(now()); if (k.keyTimes.length > 100) k.keyTimes.shift(); }, true);
   const successCount = () => {
     const text = document.body ? document.body.innerText : '';
     return (text.match(SUCCESS) || []).length;
