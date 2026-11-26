@@ -178,9 +178,38 @@ check("template: job is named pr-descricao", "\n  pr-descricao:" in tpl)
 check("template: never pull_request_target", "pull_request_target:" not in tpl and "pull_request:" in tpl)
 check("template: events", "[opened, edited, synchronize, reopened]" in tpl)
 check("template: ready_for_review does not rerun the checks", not re.search(r"^[^#\n]*ready_for_review", tpl, re.M))
-check("template: least permissions", "contents: read" in tpl and "pull-requests: write" in tpl and tpl.count("write") == 1)
+check("template: read only", "contents: read" in tpl and not re.search(r"^[^#\n]*write", tpl, re.M))
 check("template: runner from CI_RUNNER, Dependabot on ubuntu-latest", "fromJSON(vars.CI_RUNNER || '\"ubuntu-latest\"')" in tpl and "dependabot[bot]" in tpl)
+check("template: lint only", "mode: lint" in tpl)
+check("template: reports on every pull request", not re.search(r"^\s*(needs|if|paths|paths-ignore|branches):", tpl, re.M))
+
+
+def cancels_on_edit(text):
+    """The defect: a workflow that listens to `edited` and has a concurrency group (a newer
+    run cancels the older one, or the pending one, on the same commit)."""
+    code = "\n".join(ln.split("#")[0] for ln in text.splitlines())
+    edited = re.search(r"types:\s*\[[^\]]*\bedited\b|^\s*-\s*edited\s*$", code, re.M)
+    return bool(edited and re.search(r"^\s*concurrency:", code, re.M))
+
+
+BAD = "on:\n  pull_request:\n    types: [opened, edited, synchronize]\nconcurrency:\n  group: pr\n  cancel-in-progress: true\n"
+BAD_LIST = "on:\n  pull_request:\n    types:\n      - edited\njobs:\n  a:\n    concurrency:\n      group: pr\n"
+check("rule: edited with a concurrency group is caught", cancels_on_edit(BAD) and cancels_on_edit(BAD_LIST))
+check("rule: edited alone and concurrency alone pass", not cancels_on_edit(BAD.split("concurrency:")[0]) and not cancels_on_edit(BAD.replace("edited, ", "")))
+tdir = os.path.join(ROOT, "templates")
+hit = [f for f in sorted(os.listdir(tdir)) if f.endswith(".yml") and cancels_on_edit(open(os.path.join(tdir, f)).read())]
+check("templates: none can cancel its own run on an edited description", not hit, hit)
+job = open(os.path.join(tdir, "pr-comment-job.yml")).read()
+check("comment job: separate name, so only one check is called pr-descricao", "\n  pr-verificacoes:" in job and "\n  pr-descricao:" not in job)
+check("comment job: comment only, with needs", "mode: comment" in job and "toJSON(needs)" in job)
+check("comment job: only the comment can write", job.count(": write") == 1 and "pull-requests: write" in job)
 act = open(os.path.join(ROOT, "actions", "pr-description", "action.yml")).read()
+steps = {b.split("\n")[0]: b for b in act.split("\n    - name: ")[1:]}
+check("action: lint mode never writes the comment", all("if: inputs.mode != 'lint'" in steps[n] for n in ("Health panel of this run", "Checks and health comment")))
+check("action: comment mode never runs the lint", "if: inputs.mode != 'comment'" in steps["Description standard (lint)"])
+guard = steps["Mode"].split("run: |\n")[1].split("\n\n")[0]
+run_mode = lambda m: subprocess.run(["bash", "-c", guard], env=dict(os.environ, MODE=m), capture_output=True).returncode
+check("action: an unknown mode fails", [run_mode(m) for m in ("all", "lint", "comment", "lnt", "")] == [0, 0, 0, 1, 1])
 check("action: every external action is pinned by SHA", all(len(l.split("@")[1].split()[0]) == 40 for l in act.splitlines() if "uses: actions/" in l))
 
 print("%d failed" % len(fails) if fails else "all ok")
