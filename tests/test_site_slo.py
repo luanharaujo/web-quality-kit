@@ -106,6 +106,10 @@ rc, out, hist = lab([1800], pages="/ /contact/")
 expect("lab: a page Lighthouse did not measure fails (no green without a number)",
        rc == 1 and "🔴 not measured | `/contact/`" in out, out)
 expect("lab: the pages measured that week still go into the history", [h["page"] for h in hist] == ["/"], hist)
+rc, out, _ = lab([1800], pages="/ /contact/", slo={"window_days": 3})
+table = [ln for ln in out.splitlines() if ln.startswith("|")]
+expect("lab: a missing page stays inside the table even with a config error",
+       any("not measured" in ln for ln in table) and out.index("not measured") < out.index("configuration"), out)
 expect("lab: a missing page is not reported as LCP over the goal",
        "not measured" in LAST["err"] and "over the goal" not in LAST["err"], LAST["err"])
 rc, out, _ = lab([1800], pages="/")

@@ -57,11 +57,12 @@ runs:
           echo "::notice::History started over (start-history)."; touch "$RUNNER_TEMP/$HN/history.jsonl"; exit 0
         fi
         file="${GITHUB_WORKFLOW_REF%%@*}"; file="${file##*/}"
-        # A week at risk fails the job, so look at completed runs, not only green
+        # A week at risk fails the job, so look at completed runs (the last 20, so
+        # a few failed or manual runs do not hide the history), not only green
         # ones. A history that cannot be read must stop the run: starting over
         # would empty the window and turn "breached" into "ok".
         # Same branch only: a manual run on another branch keeps its own history.
-        if ! runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --branch "$GITHUB_REF_NAME" --status completed --limit 5 \
+        if ! runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --branch "$GITHUB_REF_NAME" --status completed --limit 20 \
                      --json databaseId -q '.[].databaseId' 2>"$RUNNER_TEMP/$HN/gh.err"); then
           echo "::error::Could not list this workflow's runs (needs permissions: actions: read)"
           cat "$RUNNER_TEMP/$HN/gh.err"; exit 1
