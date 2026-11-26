@@ -46,7 +46,7 @@ test('list list-mocked (slow route handler in the test)', async ({ page }) => {
 // Typing starts a read; the draft saved later, with no tap, is not a tap's write.
 test('booking good-typed (autosave after typing)', async ({ page }) => {
   await page.goto('/booking.html?v=good-typed');
-  await page.getByLabel('Name').pressSequentially('Ana', { delay: 50 });
+  await page.getByLabel('Name').pressSequentially('Ana B', { delay: 50 }); // a space is typing, not a tap
   await page.waitForTimeout(3000);
 });
 
@@ -55,6 +55,16 @@ test('list list-clock (page.clock)', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-01-05T10:00:00Z'));
   await page.goto('/list.html?v=list-clock');
   await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+});
+
+// The test ends (and the page closes) while a slow read is out: no verdict.
+test('list list-closed (page closed during the check)', async ({ page }) => {
+  await page.route('**/api/list-closed/items*', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.fulfill({ json: [] }).catch(() => {});
+  });
+  await page.goto('/list.html?v=list-closed', { waitUntil: 'commit' });
+  await page.close();
 });
 
 // A mocked read that never answers (a hung server) must not hang the test.

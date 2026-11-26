@@ -27,7 +27,7 @@ const EXPECTED = {
     'upload-good': [], 'upload-bad': ['request-id', 'upload-confirm', 'upload-dropzone', 'upload-progress'],
     'bad-request-id': ['request-id'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
-    'list-readonly': [], 'list-hidden': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'], 'list-mocked': [], 'list-clock': [], 'list-hung': [],
+    'list-readonly': [], 'list-hidden': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'], 'list-mocked': [], 'list-clock': [], 'list-hung': [], 'list-closed': null,
     'list-excluded': null, // excluded: must never be checked
   },
   fail: {
@@ -62,7 +62,7 @@ for (const [pass, pages] of Object.entries(RAN)) {
 }
 for (const [pass, pages] of Object.entries(EXPECTED)) {
   for (const [p, want] of Object.entries(pages)) {
-    if (want === null) { // the excluded route (…/items) must never be checked
+    if (want === null) { // excluded, or the page closed first: …/items must never be judged
       const ok = !(pass === 'slow' ? slow : fail).some((e) => e.type === 'check' && e.route.endsWith(`/${p}/items`));
       console.log(`${ok ? 'ok  ' : 'FAIL'} ${pass} ${p}: ${ok ? 'never checked (excluded)' : 'checked although excluded'}`);
       if (!ok) bad++;
