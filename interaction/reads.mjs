@@ -26,6 +26,7 @@ const WORD = 'workout';
 const SEARCH = 'input[type=search],[role=searchbox],[role=combobox]';
 const DUPLICATE_WINDOW_MS = 3000;
 const CHAIN_MAX_MS = 5000; // reads extend a tap's window, never past this
+const MAX_KEY_GAP_MS = 250; // slower typing than this: the count is not judged
 const DEBOUNCE_NEEDS_MS = 8000; // time left in the test before typing in a field
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -231,15 +232,22 @@ export class Reads {
         await field.fill('', { timeout: 1000 }); // reads from clearing are not counted
         await sleep(600);
         this.typing.count = 0;
+        await evaluate(page, () => { if (window.__kit) window.__kit.keyTimes = []; }, null, 2000);
         await field.pressSequentially(WORD, { delay: 60, timeout: 3000 });
+        // The longest pause between keys as the page saw them: on a loaded
+        // machine it can grow past a page's debounce, and then the count
+        // proves nothing.
+        const times = await evaluate(page, () => (window.__kit ? window.__kit.keyTimes : []), null, 2000);
+        this.typing.gap = (times || []).reduce((max, t, i, all) => (i ? Math.max(max, t - all[i - 1]) : 0), 0);
         await sleep(1500);
       } catch {
         this.typing = null;
         continue;
       }
-      const { count, key } = this.typing;
+      const { count, key, gap } = this.typing;
       this.typing = null;
       if (!count) continue; // filters locally: nothing to debounce
+      if (gap > MAX_KEY_GAP_MS) continue; // typing was too slow to judge
       if (this.skipped(key)) continue;
       if (count > 2) this.problem(key, 'debounce', `typing "${WORD}" in the search field "${name}" sent ${count} reads (limit 2): wait for a pause in the typing before searching`);
       else this.o.pass(key, 'debounce', `${count} read(s) for ${WORD.length} letters`);
