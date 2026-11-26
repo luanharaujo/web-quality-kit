@@ -88,6 +88,9 @@ expect("lab: weeks before the window do not count", rc == 0 and "🟢 ok" in out
 expect("lab: history older than window + 90 days is dropped", len(hist) < 21, len(hist))
 rc, out, _ = lab([2200], slo={"lcp_p75_ms": 2000})
 expect("lab: a stricter goal from web-budget.json is used", rc == 1 and "≤ 2.00 s" in out, out)
+rc, out, hist = lab([1800], slo={"window_days": 3})
+expect("lab: a config error fails after the week is kept in the history",
+       rc == 1 and "configuration" in out and len(hist) == 1, (out, hist))
 rc, out, _ = lab([1800], settings=dict(MOBILE, formFactor="desktop"))
 expect("lab: a desktop run is refused", rc == 1 and "phone" in out, out)
 

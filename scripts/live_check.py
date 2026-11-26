@@ -46,6 +46,16 @@ def local_file(site_dir, path):
     return full
 
 
+def headers_of(msg):
+    """Lower-case names; a header sent twice (a CDN and the origin both set
+    Cache-Control) keeps both values, joined, so neither is lost."""
+    out = {}
+    for k, v in (msg.items() if msg else []):
+        k = k.lower()
+        out[k] = f"{out[k]}, {v}" if k in out else v
+    return out
+
+
 def fetch(url, timeout=20, with_headers=False):
     if not url.lower().startswith(("http://", "https://")):
         return (0, b"not an http(s) URL", {}) if with_headers else (0, b"not an http(s) URL")
@@ -53,9 +63,9 @@ def fetch(url, timeout=20, with_headers=False):
                                                "Cache-Control": "no-cache"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (scheme checked above)
-            out = (r.status, r.read(), {k.lower(): v for k, v in r.headers.items()})
+            out = (r.status, r.read(), headers_of(r.headers))
     except urllib.error.HTTPError as e:
-        out = (e.code, b"", {k.lower(): v for k, v in (e.headers or {}).items()})
+        out = (e.code, b"", headers_of(e.headers))
     except (urllib.error.URLError, OSError) as e:
         out = (0, str(e).encode(), {})
     return out if with_headers else out[:2]
