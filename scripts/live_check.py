@@ -134,7 +134,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
         cc = h.get("cache-control", "")
         if status != 200:
             out.append((path, f"HTTP {status}"))
-        elif (site_rules.max_age(cc) or 0) < site_rules.YEAR or "immutable" not in cc.lower():
+        elif (site_rules.max_age(cc, shortest=True) or 0) < site_rules.YEAR or "immutable" not in cc.lower():
             out.append((path, f"Cache-Control '{cc or 'none'}' (needs max-age={site_rules.YEAR}, immutable)"))
     return out, len(chosen), pages
 
@@ -222,7 +222,8 @@ def main():
                 print(f"::error::live cache: {path}: {why}", file=sys.stderr)
             return 1
         if n == 0:
-            print("🟡 pages are right, but no hashed file was checked (none found in the published files).")
+            print(("🟡 pages are right, but" if checked else "🟡") +
+                  " no hashed file was checked (none found in the published files).")
             print("::warning::live cache: no hashed file was checked", file=sys.stderr)
         else:
             print("🟢 every page and hashed file has the right Cache-Control.")

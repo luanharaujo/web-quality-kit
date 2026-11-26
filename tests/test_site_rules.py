@@ -272,6 +272,8 @@ expect("css: data: TTF inside src is caught", ("font-format", "data:font/ttf;bas
 expect("css: the second src of a face is read", ("font-format", "/f/t.ttf") in pairs, pairs)
 line = [c["line"] for c in got if c["text"] == "/later.png"]
 expect("css: img-format line is right after @font-face blocks", line == [5], line)
+expect("header sent twice: hashed files judge the shortest max-age",
+       site_rules.max_age("public, max-age=60, public, max-age=31536000, immutable", shortest=True) == 60, "")
 expect("s-maxage counts for HTML", site_rules.max_age("public, max-age=0, s-maxage=86400", shared=True) == 86400, "")
 count, names = site_rules.outside_latin([(0x20, 0x7E), (0x1D00, 0x1DBF)])
 expect("phonetic extensions (latin-ext) are Latin", count == 0, names)

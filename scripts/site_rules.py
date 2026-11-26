@@ -214,12 +214,14 @@ def cache_control(url, rules):
     return ", ".join(values)
 
 
-def max_age(cc, shared=False):
+def max_age(cc, shared=False, shortest=False):
     """max-age (the browser); shared=True: the longest of max-age and
-    s-maxage (a CDN keeps the page that long)."""
+    s-maxage (a CDN keeps the page that long). With the header sent twice,
+    the longest value is the risk for a page; shortest=True gives the value
+    a hashed file must not fall below."""
     names = r"(?:max-age|s-maxage)" if shared else r"max-age"
-    m = re.findall(r"(?:^|[,\s])" + names + r"\s*=\s*(\d+)", cc, re.I)
-    return max(int(x) for x in m) if m else None
+    m = [int(x) for x in re.findall(r"(?:^|[,\s])" + names + r"\s*=\s*(\d+)", cc, re.I)]
+    return (min(m) if shortest else max(m)) if m else None
 
 
 def page_url(rel, mount=""):
@@ -245,7 +247,7 @@ def cache_cases(site, files, headers, extra_hashed, mount="", dirs=HASHED_DIRS):
         elif is_hashed(rel, extra_hashed, dirs):
             url = mount + "/" + rel.replace(os.sep, "/")
             cc = cache_control(url, rules)
-            age = max_age(cc) or 0
+            age = max_age(cc, shortest=True) or 0
             if age < YEAR or "immutable" not in cc.lower():
                 out.append(case(rel, "cache-hashed", 0, "",
                                 f"Cache-Control '{cc or 'none'}' (needs max-age={YEAR}, immutable)"))
