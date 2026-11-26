@@ -86,9 +86,19 @@ def lab(a):
         return 1
     history = []
     if a.history and os.path.exists(a.history):
-        history = [json.loads(ln) for ln in open(a.history) if ln.strip()]
-    # A rerun on the same day replaces that day's number instead of adding a week.
-    history = [h for h in history if not (h["date"] == today.isoformat() and h["page"] in week)]
+        try:
+            history = [json.loads(ln) for ln in open(a.history) if ln.strip()]
+            for h in history:
+                datetime.date.fromisoformat(h["date"]), h["page"], float(h["lcp_p75_ms"])
+        except (ValueError, KeyError, TypeError) as e:
+            print(f"## SLO\n\n🔴 the history file is damaged ({e}): run once with start-history to begin again")
+            print("::error::SLO history damaged: run once with start-history", file=sys.stderr)
+            return 1
+    # One number per page per week: a rerun (a manual run, a retry) in the same
+    # ISO week replaces it instead of adding a week to the window.
+    this_week = today.isocalendar()[:2]
+    history = [h for h in history
+               if not (datetime.date.fromisoformat(h["date"]).isocalendar()[:2] == this_week and h["page"] in week)]
     for page, vals in week.items():
         history.append({"date": today.isoformat(), "page": page, "lcp_p75_ms": round(p75(vals), 1)})
     start = today - datetime.timedelta(days=slo["window_days"])

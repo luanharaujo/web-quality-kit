@@ -217,8 +217,8 @@ def main():
         if not os.path.exists(a.config):
             print(f"🟡 {a.config} not found (no checkout in this job?): only the kit's build folders count as hashed.\n")
         files = [os.path.relpath(os.path.join(r, f), a.site_dir) for r, _, fs in os.walk(a.site_dir) for f in fs]
-        for folder, hits, total in site_rules.looks_like_build(files, site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"])):
-            print(f"🟡 {folder} looks like build output ({hits} of {total} names carry a hash) but is not declared "
+        for folder, f_hits, f_total in site_rules.looks_like_build(files, site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"])):
+            print(f"🟡 {folder} looks like build output ({f_hits} of {f_total} names carry a hash) but is not declared "
                   "in cache.hashed_dirs: its cache was not checked.\n")
             print(f"::warning::live cache: {folder} looks like build output but is not declared", file=sys.stderr)
         if problems:

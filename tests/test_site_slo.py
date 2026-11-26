@@ -76,8 +76,8 @@ rc, out, hist = lab([1800, 1900, 2000])
 expect("lab: fast site is ok", rc == 0 and "🟢 ok" in out, out)
 expect("lab: this week goes into the history", [h["page"] for h in hist] == ["/"] and hist[0]["lcp_p75_ms"] == 1950, hist)
 expect("lab: query strings do not split a page", out.count("| `/") == 1, out)
-rc, out, hist = lab([2100], [{"date": "2026-11-26", "page": "/", "lcp_p75_ms": 1500}])
-expect("lab: a rerun on the same day replaces that day", len(hist) == 1 and hist[0]["lcp_p75_ms"] == 2100
+rc, out, hist = lab([2100], [{"date": "2026-11-24", "page": "/", "lcp_p75_ms": 1500}])
+expect("lab: a rerun in the same week replaces that week", len(hist) == 1 and hist[0]["lcp_p75_ms"] == 2100
        and "(1 week)" in out, (hist, out))
 rc, out, _ = lab([3000, 3100, 3200], weeks([1800, 1900, 2000]))
 expect("lab: one slow week is at risk (the window still meets the goal)", rc == 1 and "🟡 at risk" in out, out)
@@ -91,6 +91,14 @@ expect("lab: a stricter goal from web-budget.json is used", rc == 1 and "≤ 2.0
 rc, out, hist = lab([1800], slo={"window_days": 3})
 expect("lab: a config error fails after the week is kept in the history",
        rc == 1 and "configuration" in out and len(hist) == 1, (out, hist))
+d = tempfile.mkdtemp()
+json.dump({"requestedUrl": "https://example.org/", "configSettings": MOBILE,
+           "audits": {"largest-contentful-paint": {"numericValue": 1800}}}, open(os.path.join(d, "lhr-0.json"), "w"))
+open(os.path.join(d, "h.jsonl"), "w").write('{"date": "2026-11-19", "page": "/"}\nnot json\n')
+r = subprocess.run([sys.executable, SLO, "lab", d, "--history", os.path.join(d, "h.jsonl"), "--config", config(),
+                    "--today", "2026-11-26"], capture_output=True, text=True)
+expect("lab: a damaged history is a clear red line pointing to start-history",
+       r.returncode == 1 and "start-history" in r.stdout and "Traceback" not in r.stderr, r.stdout + r.stderr)
 rc, out, _ = lab([1800], settings=dict(MOBILE, formFactor="desktop"))
 expect("lab: a desktop run is refused", rc == 1 and "phone" in out, out)
 
