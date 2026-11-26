@@ -10,3 +10,8 @@ const other = (request) => fetch(request)
 const api = { fetch(url) { return fetch(url) } }
 const late = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(999999) })
 const early = (u, init) => fetch(u, { signal: AbortSignal.timeout(5000), ...init })
+const proto = () => fetch('//api.example.com/x')
+const MINUTE = 60 * 1000
+const longish = (u) => fetch(u, { signal: AbortSignal.timeout(MINUTE) })
+const inline = (u) => fetch(u, { signal: AbortSignal.timeout(2 * 60_000) })
+const fine = (u) => fetch(u, { signal: AbortSignal.timeout(5 * 1000) })

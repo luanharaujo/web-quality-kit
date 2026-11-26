@@ -97,8 +97,40 @@ function isDefaultExport(obj) {
   return false
 }
 
+// A number the code shows: a literal, + - * / of numbers, parentheses, or a
+// const in the same file set to one (60 * 1000, TIMEOUT_MS). Anything else: null.
+function constValue(n, sf, seen = new Set()) {
+  n = unwrap(n)
+  if (ts.isNumericLiteral(n)) return Number(n.text)
+  if (ts.isBinaryExpression(n)) {
+    const a = constValue(n.left, sf, seen), b = constValue(n.right, sf, seen)
+    if (a === null || b === null) return null
+    switch (n.operatorToken.kind) {
+      case ts.SyntaxKind.AsteriskToken: return a * b
+      case ts.SyntaxKind.PlusToken: return a + b
+      case ts.SyntaxKind.MinusToken: return a - b
+      case ts.SyntaxKind.SlashToken: return b ? a / b : null
+      default: return null
+    }
+  }
+  if (ts.isIdentifier(n) && !seen.has(n.text)) {
+    seen.add(n.text)
+    let found = null
+    const look = (x) => {
+      if (found !== null) return
+      if (ts.isVariableDeclaration(x) && ts.isIdentifier(x.name) && x.name.text === n.text && x.initializer &&
+          ts.isVariableDeclarationList(x.parent) && (x.parent.flags & ts.NodeFlags.Const)) found = constValue(x.initializer, sf, seen)
+      else ts.forEachChild(x, look)
+    }
+    look(sf)
+    return found
+  }
+  return null
+}
+
 function isInternal(start) {
   if (start === null) return false
+  if (start.startsWith('//')) start = 'https:' + start // protocol-relative: another host
   if (start === '' || start.startsWith('/') || start.startsWith('.')) return true
   const m = /^https?:\/\/([^/:?#]+)/i.exec(start)
   if (!m) return false
@@ -149,8 +181,8 @@ for (const t of targets) {
           if (outer !== null) sig = outer
           if (sig === null) add(node, 'fetch-no-timeout')
           else if (sig !== 'unknown' && ts.isCallExpression(sig) && sig.expression.getText() === 'AbortSignal.timeout') {
-            const arg = sig.arguments[0]
-            if (arg && ts.isNumericLiteral(arg) && Number(arg.text) > maxMs) add(node, 'fetch-timeout-too-long')
+            const ms = sig.arguments[0] ? constValue(sig.arguments[0], sf) : null
+            if (ms !== null && ms > maxMs) add(node, 'fetch-timeout-too-long')
           }
         }
       }
