@@ -198,17 +198,20 @@ check("fetch: a one-parameter fetch(url) wrapper is not a Worker handler", (10, 
 check("fetch: an explicit signal after a spread is the one checked", (11, "fetch-timeout-too-long") in [(c["line"], c["rule"]) for c in rq]
       and 12 not in [c["line"] for c in rq], rq)
 of, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/obs_fetch.ts"]), ROOT)
-check("fetch: obs.fetch (the request-id helper) is a fetch, by name or as withObservability's parameter",
+check("fetch: obs.fetch is a fetch, by name or as the handler's 2nd parameter; a destructured env binding stays internal",
       [(c["line"], c["rule"]) for c in of] == [(5, "fetch-no-timeout"), (12, "fetch-no-timeout")], of)
 hd = tempfile.mkdtemp(dir=ROOT)
 for n in ("observe.ts", "d1_queries.ts"):
     shutil.copy(os.path.join(ROOT, "templates", "server", n), hd)
 hc, _ = sq.fetch_cases(cfg("good", source=[os.path.relpath(hd, ROOT)]), ROOT)
+crlf = open(os.path.join(hd, "observe.ts")).read().replace("\n", "\r\n")
+open(os.path.join(hd, "observe.ts"), "w", newline="").write(crlf)
+hcr, _ = sq.fetch_cases(cfg("good", source=[os.path.relpath(hd, ROOT)]), ROOT)
 with open(os.path.join(hd, "observe.ts"), "a") as f:
     f.write("\nexport const ping = () => fetch('https://x.example/')\n")
 hx, _ = sq.fetch_cases(cfg("good", source=[os.path.relpath(hd, ROOT)]), ROOT)
 shutil.rmtree(hd)
-check("fetch: an unchanged copy of the kit's helper is skipped; an edited one is not", hc == [] and any("x.example" in c["text"] for c in hx), (hc, hx))
+check("fetch: an unchanged copy of the kit's helper is skipped; an edited one is not", hc == [] and hcr == [] and any("x.example" in c["text"] for c in hx), (hc, hcr, hx))
 wk, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/worker_satisfies.ts", "tests/cases/server/worker_exported_var.ts"]), ROOT)
 check("fetch: a Worker exported with `satisfies` or through a variable may forward its request",
       [(c["file"].rsplit("/", 1)[-1], c["line"]) for c in wk] == [("worker_exported_var.ts", 5)], wk)

@@ -69,9 +69,17 @@ check("good: no loose console", good["console"] == [], good["console"])
 rc, out = panel(good)
 check("good: panel green, exit 0", rc == 0 and "🔴" not in out, out)
 
-redir = so.check(cfg("good", routes=cfg("good")["routes"] + [{"route": "GET /login"}]), ROOT)
-check("a 302 to another host is the answer: not followed, still has the id",
+redir = so.check(cfg("good", routes=cfg("good")["routes"] + [{"route": "GET /login", "status": 302}]), ROOT)
+check("a 302 meant as the answer (\"status\": 302): not followed, still has the id",
       next(r for r in redir["routes"] if r["route"] == "GET /login")["ok"], redir["routes"])
+to_login = so.check(cfg("good", routes=[{"route": "GET /login"}]), ROOT)
+check("a route that redirects without saying so did not exercise its work: caught",
+      any("answered 302" in p for p in to_login["routes"][0]["problems"]), to_login["routes"])
+listed = so.check(cfg("good", headers_command="echo '[1]'"), ROOT)
+check("headers_command that prints a list is a clear error, not a traceback",
+      any("JSON object of text headers" in e for e in listed["errors"]), listed["errors"])
+odd = so.check(cfg("bad", mode="baseline", baseline={"console": "3"}), ROOT)
+check("baseline.console that is not a number is a clear error", any("baseline.console" in e for e in odd["errors"]), odd["errors"])
 check("package@version in the output is not personal data", good["log_problems"] == [], good["log_problems"])
 ready_redirect = so.check(cfg("good", server=dict(start("good"), ready="/login")), ROOT)
 check("a ready path that redirects counts as an answer", ready_redirect["errors"] == [], ready_redirect["errors"])

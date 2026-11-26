@@ -11,3 +11,5 @@ export default {
 export async function charge(obs: { fetch: typeof fetch }) {
   return obs.fetch('https://pay.example/charge', { method: 'POST' })
 }
+export const bound = (req: Request, env: { API: { fetch: typeof fetch } }) =>
+  withObservability(req, env, async ({ API }, obs) => API.fetch('https://svc.example/x'))
