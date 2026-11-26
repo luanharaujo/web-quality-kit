@@ -5,7 +5,8 @@
 <!-- ?v=good | good-reads (two slow reads, then the write) | good-key (reads, then a write guarded only by its Idempotency-Key)
      | good-bg (a draft saved in the background 2.5 s after the tap)
      | good-typed (typing looks up slots, a draft is saved 1.7 s later, no tap)
-     | good-enter (Enter in the field books, no form submit) | good-check (ticking a box looks up slots, then books) | bad-busy | bad-double | bad-optimistic | bad-error | bad-request-id -->
+     | good-enter (Enter in the field books, no form submit) | good-check (ticking a box looks up slots, then books)
+     | good-select (choosing a slot looks it up, then books) | bad-busy | bad-double | bad-optimistic | bad-error | bad-request-id -->
 <form id="f">
   <label>Name <input name="name" id="name"></label>
   <button type="submit" id="go">Book</button>
@@ -45,7 +46,7 @@ async function book() {
   if (rid) headers['x-request-id'] = rid;
   const code = rid ? ` (error code: ${rid})` : '';
   try {
-    if (v === 'good-reads' || v === 'good-key' || v === 'good-check') { // look up the slot first: the write leaves well after the tap
+    if (v === 'good-reads' || v === 'good-key' || v === 'good-check' || v === 'good-select') { // look up the slot first: the write leaves well after the tap
       await fetch(`/api/${v}/slots`);
       await fetch(`/api/${v}/slots?day=2`);
     }
@@ -88,6 +89,15 @@ if (v === 'good-check') {
   label.append(box, ' Book this slot');
   form.append(label);
   box.addEventListener('change', () => { if (box.checked) book(); });
+}
+// good-select: choosing a slot books (after two slow reads)
+if (v === 'good-select') {
+  const label = document.createElement('label');
+  const pick = document.createElement('select');
+  for (const t of ['', 'tue-18h', 'wed-18h']) pick.append(new Option(t || 'Choose', t));
+  label.append('Slot ', pick);
+  form.append(label);
+  pick.addEventListener('change', () => { if (pick.value) book(); });
 }
 let tapAt = 0;
 form.addEventListener('submit', (e) => {

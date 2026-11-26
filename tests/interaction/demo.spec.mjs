@@ -57,6 +57,13 @@ test('booking good-check (a ticked box, slow reads, then the write)', async ({ p
   await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {});
 });
 
+test('booking good-select (a chosen option, slow reads, then the write)', async ({ page }) => {
+  await page.goto('/booking.html?v=good-select');
+  await page.getByLabel('Name').fill('Test User');
+  await page.getByLabel('Slot').selectOption('tue-18h');
+  await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {});
+});
+
 // Typing starts a read; the draft saved later, with no tap, is not a tap's write.
 test('booking good-typed (autosave after typing)', async ({ page }) => {
   await page.goto('/booking.html?v=good-typed');
@@ -73,13 +80,15 @@ test('list list-clock (page.clock)', async ({ page }) => {
 
 // The test ends (and the page closes) while a slow read is out: no verdict.
 test('list list-closed (page closed during the check)', async ({ page }) => {
+  let handling;
+  const handled = new Promise((r) => { handling = r; });
   await page.route('**/api/list-closed/items*', async (route) => {
+    handling(); // the kit is watching this read now
     await new Promise((r) => setTimeout(r, 1500));
     await route.fulfill({ json: [] }).catch(() => {});
   });
-  const asked = page.waitForRequest('**/api/list-closed/items*');
   await page.goto('/list.html?v=list-closed', { waitUntil: 'commit' });
-  await asked; // the read is out and being watched
+  await handled;
   await page.close();
 });
 

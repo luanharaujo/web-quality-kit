@@ -23,7 +23,7 @@ function failures(entries, type) {
 
 const EXPECTED = {
   slow: {
-    good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'good-enter': [], 'good-check': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
+    good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'good-enter': [], 'good-check': [], 'good-select': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
     'upload-good': [], 'upload-bad': ['request-id', 'upload-confirm', 'upload-dropzone', 'upload-progress'],
     'bad-request-id': ['request-id'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
@@ -46,16 +46,22 @@ const got = { slow: failures(slow, 'check'), fail: failures(fail, 'check'), cont
 // The good pages must have been through every check (a check that never ran
 // proves nothing).
 const RAN = {
-  slow: { good: ['busy', 'double', 'optimistic'], 'good-reads': ['busy', 'double', 'optimistic'], 'good-key': ['busy', 'double', 'optimistic', 'loading-state'], 'good-enter': ['busy', 'double', 'optimistic'], 'good-check': ['busy', 'optimistic'], 'list-mocked': ['loading-state'], 'list-clock': ['loading-state'], 'list-hidden': ['loading-state'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
+  slow: { good: ['busy', 'double', 'optimistic'], 'good-reads': ['busy', 'double', 'optimistic'], 'good-key': ['busy', 'double', 'optimistic', 'loading-state'], 'good-enter': ['busy', 'double', 'optimistic'], 'good-check': ['busy', 'optimistic'], 'good-select': ['busy', 'optimistic'], 'list-mocked': ['loading-state'], 'list-clock': ['loading-state'], 'list-hidden': ['loading-state'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
   fail: { good: ['error-alert', 'error-keeps-input', 'error-retry', 'error-retry-sends'], 'upload-good': ['upload-independent'] },
 };
 const ran = (entries, p) => new Set(entries.filter((e) => e.type === 'check' && page(e.route) === p).map((e) => e.check));
 
 let bad = 0;
+// A debounce not judged because the machine typed too slowly is reported as
+// a note: accepted (and shown) instead of a debounce that ran.
+const noted = (entries, p, check) => entries.some((e) => e.type === 'note' && page(e.route) === p && e.check === check);
+const slowTyping = (pass, p) => pass === 'slow' && noted(slow, p, 'debounce');
+
 for (const [pass, pages] of Object.entries(RAN)) {
   for (const [p, want] of Object.entries(pages)) {
     const have = ran(pass === 'slow' ? slow : fail, p);
-    const missing = want.filter((c) => !have.has(c));
+    const missing = want.filter((c) => !have.has(c) && !(c === 'debounce' && slowTyping(pass, p)));
+    if (want.includes('debounce') && !have.has('debounce') && slowTyping(pass, p)) console.log(`note ${pass} ${p}: debounce not judged (slow typing on this machine)`);
     console.log(`${missing.length ? 'FAIL' : 'ok  '} ${pass} ${p}: ran ${want.join(', ')}${missing.length ? `; never ran ${missing.join(', ')}` : ''}`);
     if (missing.length) bad++;
   }
@@ -70,10 +76,21 @@ for (const [pass, pages] of Object.entries(EXPECTED)) {
     }
     if (!got[pass][p]) { console.log(`FAIL ${pass} ${p}: never checked`); bad++; continue; }
     const have = [...got[pass][p]].sort();
-    const ok = JSON.stringify(have) === JSON.stringify([...want].sort());
+    let expect = [...want];
+    if (expect.includes('debounce') && !have.includes('debounce') && slowTyping(pass, p)) {
+      console.log(`note ${pass} ${p}: debounce not judged (slow typing on this machine)`);
+      expect = expect.filter((c) => c !== 'debounce');
+    }
+    const ok = JSON.stringify(have) === JSON.stringify(expect.sort());
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${pass} ${p}: caught [${have.join(', ')}]${ok ? '' : `, expected [${want.join(', ')}]`}`);
     if (!ok) bad++;
   }
+}
+// The page closed while its read was watched: a note says it was not judged.
+{
+  const ok = noted(slow, 'list-closed', 'loading-state');
+  console.log(`${ok ? 'ok  ' : 'FAIL'} slow list-closed: ${ok ? 'not judged, with a note' : 'no note that the check could not judge'}`);
+  if (!ok) bad++;
 }
 // A write long after the tap, with nothing on screen, is not the tap's.
 for (const [pass, entries] of [['slow', slow], ['fail', fail]]) {

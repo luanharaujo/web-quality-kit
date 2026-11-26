@@ -68,6 +68,8 @@ export class Reads {
     this.actionAt = 0; // last tap or submit (Node clock)
     this.activeUntil = 0; // end of the last read that tap started
     this.inflight = new Set(); // reads that tap started, not answered yet
+    this.out = new Set(); // keys of reads whose answer has not come back yet
+    this.finished = false;
     this.started = Date.now();
     this.enforce = (process.env.KIT_INTERACTION_READS || 'warn') === 'enforce';
   }
@@ -104,7 +106,7 @@ export class Reads {
     if (!this.actionAt || Date.now() - this.actionAt > CHAIN_MAX_MS) return false;
     // A write right as a read ends can reach us before that read's end does.
     if (this.inflight.size) return true;
-    return this.activeUntil > this.actionAt && Date.now() - this.activeUntil <= userWindowMs;
+    return Date.now() - Math.max(this.actionAt, this.activeUntil) <= userWindowMs; // a select chosen with no click counts too
   }
 
 
@@ -187,13 +189,30 @@ export class Reads {
   // Called from the route handler for reads. The read goes on at once (never
   // held); the page is then watched for a loading signal around it.
   async check(route, request, proceed) {
-    const { page, cfg } = this.o;
     const key = routeKey('GET', request.url());
     // The page clock when the read left, taken before the test's own route
     // handler runs (it may wait before answering).
     const left = Date.now();
-    await proceed();
-    if (this.o.opts.mode !== 'slow' || this.typing || !this.ours(request) || listed(cfg.no_loading_state, key) || this.skipped(key)) return;
+    const judged = this.judged(request, key);
+    if (judged) this.out.add(key);
+    try { await proceed(); } finally { this.out.delete(key); }
+    if (!judged) return;
+    // Once the read is answered, the time-limited watch below is waited for
+    // at the end of the test (a mock that never answers is not).
+    const watch = this.watch(request, key, left);
+    this.o.pending.add(watch);
+    try { await watch; } finally { this.o.pending.delete(watch); }
+  }
+
+  // Whether the loading check looks at this read at all.
+  judged(request, key) {
+    return this.o.opts.mode === 'slow' && !this.typing && this.ours(request)
+      && !listed(this.o.cfg.no_loading_state, key) && !this.skipped(key);
+  }
+
+  async watch(request, key, left) {
+    const { page, cfg } = this.o;
+    if (this.finished) return; // answered after the test ended: noted in end()
     if (!this.o.claim('read', key)) return;
     // Look at least once: a slow route handler may already be past the window,
     // and the signals are kept with their times.
@@ -209,6 +228,14 @@ export class Reads {
     }
     if (how) this.o.pass(key, 'loading-state', how);
     else this.problem(key, 'loading-state', `nothing new showed the page was loading within ${cfg.busyWithinMs} ms (turn on aria-busy on the region, or put text in a role=status, or show a progress bar); a blank or frozen screen looks broken`);
+  }
+
+  // When the test ends: reads still unanswered (a slow or hung mock, a page
+  // closed first) cannot be judged; say so, and judge nothing after this.
+  end() {
+    this.finished = true;
+    if (this.o.opts.mode !== 'slow') return;
+    for (const key of this.out) this.o.note(key, 'loading-state', 'not judged: the read was not answered before the test ended');
   }
 
   // After the test body: type into each editable search field once per run.
