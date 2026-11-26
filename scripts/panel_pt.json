@@ -74,5 +74,6 @@
  "List routes without pagination": "Rotas de lista sem paginação",
  "External call without a time limit": "Chamada externa sem tempo limite",
  "not measured in this PR": "não medido neste PR",
- "main measured it": "a main mediu"
+ "main measured it": "a main mediu",
+ "Site rules: note": "Regras do site: aviso"
 }

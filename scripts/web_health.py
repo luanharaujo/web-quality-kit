@@ -242,7 +242,8 @@ def collect(a):
         m["query_loop"] = json.load(open(a.query_loop))
     if a.site_rules:
         r = json.load(open(a.site_rules))
-        m["site_rules"] = {"mode": r["mode"], "errors": r["errors"], "excepted": len(r.get("excepted", []))}
+        m["site_rules"] = {"mode": r["mode"], "errors": r["errors"], "excepted": len(r.get("excepted", [])),
+                           "notes": r.get("notes", [])}
         for k in SITE_RULES:
             m[k] = r[k]
     for item in a.legacy or []:
@@ -605,6 +606,8 @@ def compare(a):
                     # Absolute: any case fails, so the row is red and the limit is "none".
                     rows[:] = [r.replace("| 🟡 |", "| 🔴 |", 1).replace(f"| {T('none new')} |", f"| {T('none')} |")
                                if f"| {T(label)} |" in r else r for r in rows]
+        for note in sr.get("notes") or []:
+            details += [f"🟡 {T('Site rules: note')}: {note}", ""]
         if sr.get("excepted"):
             details += [T("Site rules: {n} cases covered by registered exceptions (web-budget.json).").format(
                 n=sr["excepted"]), ""]

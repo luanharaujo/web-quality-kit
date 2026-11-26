@@ -189,12 +189,11 @@ import site_rules  # noqa: E402
 for name in ("fonts/Inter-SemiBold.woff2", "img/logo-whatsapp2.webp", "img/team-meeting2025.webp",
              "img/photo-DSC_01234.webp", "img/hero-1920x1080.webp", "favicon.svg"):
     expect(f"not hashed (outside a build folder): {name}", not site_rules.is_hashed(name, []), name)
-for name in ("_astro/index.DdKsxaZq.css", "assets/index-Bh-3x9aZ.js", "assets/index-BhK3_a-Z.js",
-             "_next/static/chunks/main-abc.js", "app/_app/immutable/x.js"):
+for name in ("_astro/index.DdKsxaZq.css", "_next/static/chunks/main-abc.js", "app/_app/immutable/x.js"):
     expect(f"hashed (build folder): {name}", site_rules.is_hashed(name, []), name)
 expect("hashed_extra adds files", site_rules.is_hashed("static/v2/app.js", [r"^static/v\d+/"]), "")
-expect("unhash: Vite hash with - and _", site_rules.unhash("assets/index-Bh-3x9aZ.js") == "assets/index.[hash].js"
-       and site_rules.unhash("/assets/a-BhK3_a-Z.css?v=1") == "/assets/a.[hash].css?v=1", site_rules.unhash("assets/index-Bh-3x9aZ.js"))
+expect("unhash: Vite hash with - and _", site_rules.unhash("assets/index-Bh-3x9aZ.js", declared=("assets/",)) == "assets/index.[hash].js"
+       and site_rules.unhash("/assets/a-BhK3_a-Z.css?v=1", declared=("assets/",)) == "/assets/a.[hash].css?v=1", site_rules.unhash("assets/index-Bh-3x9aZ.js"))
 expect("unhash: Next.js long hex hash", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js")
        == "_next/static/chunks/main.[hash].js", site_rules.unhash("_next/static/chunks/main-0a1b2c3d4e5f6789.js"))
 # Name shapes of the build tools: two builds give the same identity.
@@ -209,30 +208,47 @@ for one, two, want in (
         ("_astro/photo.DdKsxaZq_Z1abc.webp", "_astro/photo.Bh3x9aZq_Z1abc.webp", "_astro/photo.[hash]_Z1abc.webp"),
         ("assets/inter-latin-400-normal-C38fXH4l.woff", "assets/inter-latin-400-normal-BhK3_a-Z.woff",
          "assets/inter-latin-400-normal.[hash].woff")):
-    got = (site_rules.unhash(one), site_rules.unhash(two))
+    declared = ("assets/",) if one.startswith("assets/") else ()
+    got = (site_rules.unhash(one, declared=declared), site_rules.unhash(two, declared=declared))
     expect(f"two builds, one identity: {want}", got == (want, want), got)
 for name in ("assets/photo-sunset-beach.png", "assets/photo-mountain-view.png", "assets/x-mountain.png",
              "assets/Inter-SemiBold.woff2", "assets/photo-IMG_1234.webp", "assets/logo-v2-final.svg",
              "assets/hero-1280x720.webp", "assets/hero-img-800w.png", "assets/e2e-test.js"):
     expect(f"a plain name in assets/ keeps its name and is not hashed: {name}",
            site_rules.unhash(name) == name and not site_rules.is_hashed(name, []), site_rules.unhash(name))
+# assets/ is never guessed: undeclared it is not checked (a note says when it
+# looks like build output); declared, the folder decides and only names that
+# look hashed lose their hash in the identity.
 hand = ["assets/logo.svg", "assets/hero.png", "assets/MyAvatar.png", "assets/iPhone12.png",
-        "assets/logo-LinkedIn.svg", "assets/20250101123000123.jpg", "assets/fb-1015812345678901-n.jpg"]
-expect("a hand-written assets/ is not build output", site_rules.mixed_dirs(hand) == (), hand)
+        "assets/logo-LinkedIn.svg", "assets/chart-ChatGPT4.png", "assets/photo-iPhoneXR.png",
+        "assets/logo-PayPalQR.svg", "assets/20250101123000123.jpg", "assets/fb-1015812345678901-n.jpg"]
+expect("hand-written assets/: no note, nothing hashed", not site_rules.looks_like_build(hand)
+       and not any(site_rules.is_hashed(f, []) for f in hand), site_rules.looks_like_build(hand))
 built = ["assets/index-Bh-3x9aZ.js", "assets/index-4e5f6a7b.css", "assets/inter-C38fXH4l.woff2",
-         "assets/hero-DdKsxaZq.webp", "assets/robots.svg"]
-expect("a Vite assets/ is build output, 8-digit hex included", site_rules.mixed_dirs(built) == ("assets/",)
-       and all(site_rules.is_hashed(f, []) for f in built[:4]) and not site_rules.is_hashed(built[4], []), built)
+         "assets/hero-DdKsxaZq.webp", "assets/og.png"]
+expect("Vite-like assets/ undeclared: a note, but nothing is required",
+       site_rules.looks_like_build(built) == [("assets/", 4, 5)] and not any(site_rules.is_hashed(f, []) for f in built),
+       site_rules.looks_like_build(built))
+two_dirs = built + ["x/assets/a.png", "x/assets/b.png", "x/assets/c.png"]
+expect("each assets/ folder is judged on its own", site_rules.looks_like_build(two_dirs) == [("assets/", 4, 5)],
+       site_rules.looks_like_build(two_dirs))
+expect("declared assets/: the folder decides",
+       all(site_rules.is_hashed(f, [], site_rules.HASHED_DIRS + ("assets/",)) for f in built), "")
+for name in ("assets/photo-mountain.png", "assets/photo-portrait.png", "assets/portrait.png", "assets/mountain.png"):
+    expect(f"declared assets/: a plain name keeps its identity: {name}",
+           site_rules.unhash(name, declared=("assets/",)) == name, site_rules.unhash(name, declared=("assets/",)))
 for name in ("assets/20250101123000123.jpg", "assets/fb-1015812345678901-n.jpg"):
-    expect(f"a long number is not a hash: {name}", site_rules.unhash(name) == name, site_rules.unhash(name))
-expect("outside build output, names are left alone",
-       site_rules.unhash("assets/logo-McDonald.svg", mixed=()) == "assets/logo-McDonald.svg", "")
+    expect(f"a long number is not a hash: {name}", site_rules.unhash(name, declared=("assets/",)) == name,
+           site_rules.unhash(name, declared=("assets/",)))
+expect("outside build output, names are left alone", site_rules.unhash("assets/logo-McDonald.svg") == "assets/logo-McDonald.svg", "")
 for one, dirs in (("_astro/index.C7XQ4K2P.css", site_rules.HASHED_DIRS), ("_astro/index.abcdefgh.css", site_rules.HASHED_DIRS),
                   ("static/main.8a3f2b1c.chunk.js", site_rules.HASHED_DIRS + ("static/",))):
     expect(f"in a build folder the position is enough: {one}", "[hash]" in site_rules.unhash(one, dirs),
            site_rules.unhash(one, dirs))
-expect("assets/ declared as a hashed folder: the folder decides",
-       site_rules.is_hashed("assets/photo-sunset-beach.png", [], site_rules.HASHED_DIRS + ("assets/",)), "")
+expect("a whole name that reads as words is not a hash", site_rules.unhash("_next/static/chunks/main-app.js")
+       == "_next/static/chunks/main-app.js", site_rules.unhash("_next/static/chunks/main-app.js"))
+expect("the identity does not depend on the rest of the folder",
+       site_rules.unhash("assets/hero.png", declared=("assets/",)) == site_rules.unhash("assets/hero.png"), "")
 expect("unhash leaves other folders alone", site_rules.unhash("img/logo-whatsapp2.webp") == "img/logo-whatsapp2.webp", "")
 
 # CSS edge cases: comments, data: URIs, two src, line numbers.
@@ -258,6 +274,17 @@ trunc = good_site()
 write(f"{trunc}/broken.png", b"\x89PNG\r\n\x1a\n")
 r = run(trunc)
 expect("truncated image is a case, not a crash", ("img-px", "broken.png") in rules_of(r), rules_of(r))
+
+# Full check: an undeclared Vite assets/ gives a note and no cache case; declared, it is checked.
+vite = good_site()
+for name in ("index-Bh-3x9aZ.js", "index-4e5f6a7b.css", "inter-C38fXH4l.woff2"):
+    write(f"{vite}/assets/{name}", "x")
+r = run(vite)
+expect("undeclared Vite assets/: a note in the result", any("assets/" in n for n in r["notes"]), r["notes"])
+expect("undeclared Vite assets/: no cache case", not any(c["file"].startswith("assets/") for c in r["cache"]), r["cache"])
+r = run(vite, config={"cache": {"hashed_dirs": ["assets/"]}})
+expect("declared assets/: its cache is checked, identity without the hash",
+       ("cache-hashed", "assets/index.[hash].js") in rules_of(r) and not r["notes"], sorted(rules_of(r)))
 
 # --- limits and exceptions ------------------------------------------------------
 strict = run(good_site(), config={"limits": {"img_px": 1000, "font_weights": 1}})
