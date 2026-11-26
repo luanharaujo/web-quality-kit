@@ -107,6 +107,22 @@ nf = subprocess.run([sys.executable, os.path.join(S, "web_health.py"), "compare"
     tempfile.mkdtemp()), "--no-fail"], capture_output=True, text=True)
 check("bad: with --no-fail the error names the rule, not the performance budget",
       "Rule broken" in nf.stderr and "Performance budget" not in nf.stderr, nf.stderr)
+def dropped(key, value):
+    """Panel of a PR that no longer runs a check main ran."""
+    d = tempfile.mkdtemp()
+    json.dump({"kit": 1, "metrics": {key: value}}, open(os.path.join(d, "b.json"), "w"))
+    json.dump({"kit": 1, "metrics": {}}, open(os.path.join(d, "h.json"), "w"))
+    p = subprocess.run([sys.executable, os.path.join(S, "web_health.py"), "compare", os.path.join(d, "b.json"),
+                        os.path.join(d, "h.json"), "--no-fail"], capture_output=True, text=True)
+    return p.returncode, p.stdout
+
+
+for key, value in (("observability", good), ("slo", {"errors": [], "availability_pct": 99.5,
+                                                      "latency_p95_ms": 500, "owner": "api-team"})):
+    rc, out = dropped(key, value)
+    check(f"dropping the {key} check main ran is red (even with --no-fail)",
+          rc == 1 and "not measured in this PR" in out and "🔴" in out, out)
+
 rc, out = panel(bad, None, "--lang", "pt")
 check("bad: panel in Portuguese", PT["console.* outside the log helper"] in out and PT["Request id and JSON log per request"] in out, out)
 

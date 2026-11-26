@@ -711,6 +711,16 @@ def compare(a):
         hard_failed += hard
         rule_hard += hard
 
+    # A check main ran that this PR dropped (input removed) would just leave
+    # the panel: red instead, as for the database checks.
+    for key, label in (("slo", "Service level objective (slo.json)"),
+                       ("observability", "Request id and JSON log per request")):
+        if key in base and key not in head:
+            row(False, False, T(label), T("not measured in this PR"), T("main measured it"), "—")
+            failed.append(label)
+            hard_failed.append(label)
+            rule_hard.append(label)
+
     if "audit" in head:
         v, bv = head["audit"], base.get("audit")
         serious = v["critical"] + v["high"]

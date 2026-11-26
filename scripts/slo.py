@@ -47,6 +47,8 @@ Decision (stdout): {"level": "ok"|"owner"|"severe"|"no_data", "notify": "none"|"
 while an incident is open nothing is repeated, except the first time it turns
 severe; it closes when the last 30 minutes of numbers look fine (see
 looks_fine), measured on the numbers, not on the clock between runs.
+Exit 2: slo.json invalid; exit 3: numbers file unreadable or malformed
+({"error": "invalid numbers", "problems": [...]}).
 """
 import argparse
 import datetime as dt
@@ -143,6 +145,49 @@ def looks_fine(window, slo, cfg):
         if len(busy) >= cfg["minutes"] and all(m["p95_ms"] > slo["latency_p95_ms"] for m in busy):
             return False
     return True
+
+
+def data_problems(data):
+    """What is wrong with the numbers file; empty when evaluate() can read it."""
+    if not isinstance(data, dict):
+        return ["the numbers must be a JSON object"]
+    out = []
+
+    def when(v, name):
+        try:
+            parse_time(v)
+        except (TypeError, ValueError, AttributeError):
+            out.append(f"{name}: not an ISO time")
+
+    def count(v, name):
+        if not number(v) or v < 0:
+            out.append(f"{name}: not a count")
+
+    when(data.get("now"), "now")
+    if data.get("complete_until") is not None:
+        when(data["complete_until"], "complete_until")
+    minutes = data.get("minutes", [])
+    if not isinstance(minutes, list):
+        out.append("minutes: not a list")
+        minutes = []
+    for i, m in enumerate(minutes[:2000]):
+        if not isinstance(m, dict):
+            out.append(f"minutes[{i}]: not an object")
+            continue
+        when(m.get("t"), f"minutes[{i}].t")
+        count(m.get("requests"), f"minutes[{i}].requests")
+        count(m.get("errors"), f"minutes[{i}].errors")
+        if m.get("p95_ms") is not None and not number(m["p95_ms"]):
+            out.append(f"minutes[{i}].p95_ms: not a number")
+    win = data.get("window")
+    if win is not None:
+        if not isinstance(win, dict):
+            out.append("window: not an object")
+        else:
+            for k in ("requests", "errors"):
+                if k in win:
+                    count(win[k], f"window.{k}")
+    return out[:20]
 
 
 def evaluate(slo, data, state=None):
@@ -254,8 +299,16 @@ def main():
     if problems:
         print(json.dumps({"error": "invalid slo.json", "problems": problems}))
         return 2
-    with open(a.data) as f:
-        data = json.load(f)
+    try:
+        with open(a.data) as f:
+            data = json.load(f)
+        bad = data_problems(data)
+    except (OSError, json.JSONDecodeError) as e:
+        bad = [f"numbers file: {type(e).__name__}"]
+    if bad:
+        # The caller fetched these over the network: a clear error, never a traceback.
+        print(json.dumps({"error": "invalid numbers", "problems": bad}))
+        return 3
     state = None
     if a.state and os.path.exists(a.state):
         with open(a.state) as f:
