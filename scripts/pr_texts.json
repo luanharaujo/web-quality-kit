@@ -258,6 +258,38 @@
     "name": "External call without a time limit",
     "means": "Every call from the server to another site needs a time limit (default up to 10 s). Without one, a slow outside service holds every request that depends on it.",
     "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Request id and JSON log"
+    ],
+    "name": "Request id and JSON log per request",
+    "means": "The local server is called on every configured route and on an unknown path. Each answer must bring an x-request-id, keep a valid one sent by the caller and replace an invalid one; the server's log must have one JSON line per request with that id; no line of the server output (JSON or plain text) may carry an e-mail, a CPF or a phone number.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "console.* outside the log helper"
+    ],
+    "name": "console.* outside the log helper",
+    "means": "Server logs go through the kit's helper (obs.log), which writes JSON with the request id and removes personal data. A loose console call has neither. An old repository keeps today's count (baseline), which can only shrink.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Logs check: configuration"
+    ],
+    "name": "Logs check: configuration",
+    "means": "The check itself could not run as configured: the log helper is not the kit's copy, no routes listed, or the local server did not answer.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Service level objective"
+    ],
+    "name": "Service level objective (slo.json)",
+    "means": "The server's written target: share of requests without a server error and how fast 95% of them answer, plus when to warn. The error-budget alert reads this file; an invalid one fails.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [
@@ -619,6 +651,42 @@
     ],
     "name": "Chamada externa sem tempo limite",
     "means": "Toda chamada do servidor a outro site precisa de tempo limite (padrão até 10 s). Sem isso, um serviço de fora lento segura todos os pedidos que dependem dele.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Código do pedido e log JSON",
+     "Request id and JSON log"
+    ],
+    "name": "Código do pedido e log JSON por pedido",
+    "means": "O servidor local é chamado em cada rota configurada e num caminho que não existe. Toda resposta tem que trazer x-request-id, manter o código válido que veio de quem chamou e trocar um inválido; o log do servidor tem que ter uma linha JSON por pedido com esse código; nenhuma linha da saída do servidor (JSON ou texto) pode ter e-mail, CPF ou telefone.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "console.* fora do registro",
+     "console.* outside the log helper"
+    ],
+    "name": "console.* fora do registro de log",
+    "means": "Log do servidor passa pelo registro do kit (obs.log), que grava JSON com o código do pedido e tira dado pessoal. Um console solto não tem nenhum dos dois. Repositório antigo guarda a contagem de hoje (linha de base), que só pode diminuir.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Logs: configuração",
+     "Logs check: configuration"
+    ],
+    "name": "Logs: configuração da checagem",
+    "means": "A checagem não conseguiu rodar como está configurada: registro de log diferente do do kit, nenhuma rota listada, ou o servidor local não respondeu.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Meta de serviço",
+     "Service level objective"
+    ],
+    "name": "Meta de serviço (slo.json)",
+    "means": "A meta escrita do servidor: parte dos pedidos sem erro do servidor e em quanto tempo 95% deles respondem, mais quando avisar. O alerta de orçamento de erro lê este arquivo; arquivo inválido reprova.",
     "rigor": "blocks"
    }
   ],

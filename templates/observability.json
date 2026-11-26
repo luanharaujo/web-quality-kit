@@ -1,0 +1,33 @@
+{
+  "mode": "absolute",
+  "helper": "api/src/observe.ts",
+  "source": [
+    "api/src"
+  ],
+  "server": {
+    "start": "cd api && npx wrangler dev --local --ip 127.0.0.1 --port {port}",
+    "url": "http://127.0.0.1:{port}",
+    "ready": "/health",
+    "timeout": 120
+  },
+  "seed": "",
+  "headers_command": "",
+  "routes": [
+    {
+      "route": "GET /health"
+    },
+    {
+      "route": "GET /items"
+    },
+    {
+      "route": "POST /items",
+      "path": "/items",
+      "body": {
+        "name": "test item"
+      }
+    }
+  ],
+  "baseline": {
+    "console": 0
+  }
+}

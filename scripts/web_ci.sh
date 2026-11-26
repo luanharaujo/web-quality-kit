@@ -30,6 +30,12 @@
 #                   (scripts/server_queries.py: N+1 with 3 vs 30 rows, list routes
 #                   without that test, missing indexes) and the query-in-a-loop
 #                   lint (warning only) on its "source" folders. Empty = off
+#   OBSERVABILITY   the repository's observability.json = logs and request ids of the
+#                   server (scripts/server_observability.py: x-request-id on every
+#                   route, one JSON log line per request with the id, no personal
+#                   data in the lines, console.* outside the kit's log helper). Empty = off
+#   SLO             the server's slo.json (availability and p95 targets, alert limits),
+#                   validated by scripts/slo.py. Empty = off
 #   MODERN          "true" = Baseline CSS check (@eslint/css use-baseline) and Modern Web
 #                   Guidance legacy-scan (old code with a native replacement), warning only
 set -uo pipefail
@@ -196,6 +202,20 @@ if [[ -n "${SERVER_QUERIES:-}" ]]; then
     args+=(--query-loop "$OUT/query_loop.json")
   fi
   end
+fi
+
+if [[ -n "${OBSERVABILITY:-}" ]]; then
+  log "Logs and request ids"
+  python3 "$KIT/scripts/server_observability.py" check --config "$OBSERVABILITY" --root "$PWD" > "$OUT/observability.json" \
+    || { echo "::error::server_observability.py did not run"; exit 1; }
+  args+=(--observability "$OUT/observability.json")
+  end
+fi
+
+if [[ -n "${SLO:-}" ]]; then
+  python3 "$KIT/scripts/slo.py" validate --file "$SLO" --root "$PWD" > "$OUT/slo.json" \
+    || { echo "::error::slo.py did not run"; exit 1; }
+  args+=(--slo "$OUT/slo.json")
 fi
 
 if [[ "${DATA_GUARD:-}" == "true" ]]; then

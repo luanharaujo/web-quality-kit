@@ -32,5 +32,7 @@ export async function handle(req, env) {
     const withOrders = customers.map((c) => ({ ...c, orders: orders.filter((o) => o.customer_id === c.id) }))
     return Response.json(paged(withOrders, limit))
   }
+  // an old path that moved: the check must not measure the redirect
+  if (req.method === 'GET' && pathname === '/old-orders') return new Response(null, { status: 301, headers: { location: '/orders' } })
   return new Response('not found', { status: 404 })
 }

@@ -1,0 +1,15 @@
+{
+  "service": "my-api",
+  "owner": "api-team",
+  "availability_pct": 99.5,
+  "latency_p95_ms": 500,
+  "window_days": 30,
+  "alert": {
+    "error_pct": 5,
+    "minutes": 5,
+    "min_requests": 20,
+    "min_errors": 5,
+    "severe_error_pct": 20,
+    "severe_burn": 14.4
+  }
+}

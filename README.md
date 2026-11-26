@@ -21,6 +21,8 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
 | Personal data and secrets | `scripts/data_guard.py`: CPF/CNPJ with valid check digits, mobile numbers, e-mails, data files, tokens. Values are never printed, only masked and hashed | `data-guard: "true"` (public repositories) |
 | Database of a server (N+1, routes, indexes) | `scripts/server_queries.py` against the local server, with the kit's query counter in the app; query-in-a-loop lint (`tools/query_in_loop.mjs`, warning only) | `server-queries` |
+| Logs and request ids of a server | `scripts/server_observability.py` against the local server, with the kit's log helper in the app; `console.*` lint (`tools/console_outside_log.mjs`) | `observability` |
+| Service level objective of a server | `scripts/slo.py validate` on `slo.json`; `scripts/slo.py alert` decides the error-budget warning from numbers passed in | `slo` |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
 
 Tools are pinned in `tools/package-lock.json` and installed with `npm ci --ignore-scripts` (no install script of any dependency runs); a new tool version is a pull request here.
@@ -80,11 +82,45 @@ export default { fetch: (req, env, ctx) => withQueryCount(req, env, (env) => han
 5. **Pagination:** with more rows than a page, each list route called with `?limit=10` must return exactly 10 items and a next cursor or page (`next`, `cursor`, `next_cursor`...), and with no limit, or with a limit far above the cap, it must stop at the cap (default 50; refusing that limit with 400 or 422 also passes). The cap calls add `?_rows=<n>` so a response cache cannot answer with the old rows; an API that refuses unknown parameters sets `pagination.cache_buster` to `""`. A tested list that does not page by nature (a grouped summary) goes in `pagination.exempt` with a reason, also in absolute mode. Settings in `pagination`. Baseline: `baseline.unpaged`.
 6. **Time limit on external calls:** every `fetch` to another host needs `signal: AbortSignal.timeout(ms)` up to `fetch_timeout.max_ms` (default 10 s) or an AbortController's signal. A binding (`env.API.fetch`), a relative URL and a host in `fetch_timeout.internal_hosts` are internal. `fetch(new Request(url, init))` reads like `fetch(url, init)`, and a Worker forwarding its own incoming request (`return fetch(request)` in its `fetch` handler) is not flagged. A protocol-relative URL (`//host/x`) is external, and the timeout may be a literal, a simple expression (`60 * 1000`) or a `const` in the same file; any other expression is not checked against `max_ms`. A PR that stops running a part main measured (for example by removing `source`) is red. Baseline: `baseline.fetch` (file and line text).
 
-These are rules, not comparisons: they fail on the first run and with `fail-on-worse: "false"`.
+These are rules, not comparisons: they fail on the first run and with `fail-on-worse: "false"`. Since 1.17.0 a list route that answers a redirect (3xx) fails: the check no longer follows it, so test the final path.
 
 **Upgrading the kit in a repository that already runs `server-queries`:** the check requires the app's `d1_queries.ts` to be identical to the kit's, so a new kit version that changes it (1.11.0 does: the route template in the log) is red until the file is copied again. A pull request that only bumps the kit version is not enough: it must also copy `templates/server/d1_queries.ts` and, in baseline mode, list today's cases of any new rule (`baseline.unpaged`, `baseline.fetch` in 1.11.0). Read the cases from the first red run.
 
 The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
+
+## Logs and request ids of a server (`observability`)
+
+For a Cloudflare Worker (with or without D1). The app copies `templates/server/observe.ts` and `templates/server/d1_queries.ts` unchanged into the same folder and wraps its fetch handler:
+
+```ts
+import { withObservability } from './observe'
+import { withQueryCount } from './d1_queries'
+export default {
+  fetch: (req, env, ctx) => withObservability(req, env, (env, obs) => handle(req, env, ctx, obs), { withQueryCount }),
+}
+```
+
+- **Request id:** a valid `x-request-id` from the caller (8 to 64 of `A-Z a-z 0-9 _ -`, with a letter and no run of 8+ digits outside a UUID, counting across `-` and `_`, so a CPF or phone is never taken as an id) is kept, otherwise a new one is made. It goes back in the response, on every log line of the request, and on calls made with `obs.fetch`. An exception in the handler becomes a 500 with `{"error":"internal_error","request_id"}`, so the id the user sees is in the log.
+- **Already using `withQueryCount` around the handler:** remove that outer wrapper and pass it in the options; its own `db_queries` line has no `request_id` and fails the check.
+- **Only `fetch` is wrapped:** a `scheduled` or `queue` handler has no `obs.log` yet, so its `console` calls count as loose (use the baseline until the kit wraps them).
+- **Names are not detected:** a slug made of plain lowercase words (`/u/jane-doe`) stays in the route, and a name inside free text (`"Jane Doe not found"`) stays in the field. An app whose paths carry names passes `route` with its own template, and messages carry ids, not names.
+- **One JSON line per request:** `{"time","level","event":"request","request_id","route","method","status","ms","queries"}`. `route` is the path with every part that is not a plain lowercase word (a digit, an uppercase letter, `= + @ % .`, 24+ characters, anything that looks like personal data) replaced by `:id`; `queries` is the D1 count.
+- **Other events:** only `obs.log.info|warn|error(event, fields)`. Fields are flat; objects are not logged. A key with a personal word in it (`customerName`, `userRg`, `sessionId`, `ip`...) becomes `[removed]`, and so does text that looks like personal data or a credential (e-mail, CPF, CNPJ, phone, IP, URL, JWT, `Authorization`, `Cookie`, `token=`, `password:`, 8+ digits) and any integer with 8+ digits. An error keeps only its type and a code like `SQLITE_BUSY`. The built-in key words are English; an app in another language passes its own with `personalWords` (lowercase), and the value patterns (e-mail, CPF, CNPJ, phone, IP, URL, long numbers and the English credential words) apply to every app.
+
+`observability.json` at the repository root (`templates/observability.json`) says how to start the local server and which requests to make (include one that writes). A route that answers 4xx or 5xx fails, unless its entry says that `status` on purpose. The check:
+
+1. The app's `observe.ts` and `d1_queries.ts` are the kit's copies.
+2. Every configured route, and an unknown path, answers with a valid `x-request-id`, keeps a valid one from the caller and replaces an invalid one.
+3. The server's log has a JSON `request` line with the caller's id and the fixed fields; every JSON log line has a `request_id`; no line of the server output (JSON or plain text) carries an e-mail, a CPF or a phone number.
+4. `console.*` in the `source` folders outside the helper: `mode: absolute` (new repository) fails on any; `mode: baseline` (old repository) tolerates up to `baseline.console`, a number that may not grow against main.
+
+Rules, not comparisons: they fail on the first run and with `fail-on-worse: "false"`.
+
+## Service level objective (`slo`)
+
+`slo.json` next to the server (`templates/slo.json`) writes the target down: `availability_pct` (share of requests without a 5xx over `window_days`, e.g. 99.5), `latency_p95_ms` (e.g. 500), the `owner` to warn, and the `alert` limits (default: errors above 5% of the requests of the last 5 minutes, with at least 20 requests and 5 errors; severe from 20%, or the budget burning 14.4x faster than allowed over the last hour, or the error budget of the window already spent while an incident is open). The `slo` input fails on an invalid file.
+
+`scripts/slo.py alert --slo slo.json --data numbers.json --state state.json` is the alert's decision, with no network and no token: whoever runs it fetches the per-minute numbers and keeps the state file. It answers `notify: none | owner | owner+escalate` (level `no_data` when the numbers are missing, late or from the future: nobody is told, so the caller watches that its numbers keep coming) and warns once per incident (again only the first time it turns severe; it closes when the last 30 minutes of numbers look fine: some traffic, errors within the limit, and no stretch of `alert.minutes` that would have warned, by errors or by slow minutes in a row). A lone error or a quiet night never warns; the other side of that is a service with fewer than `min_requests` requests in `minutes` minutes, which never warns even when it is fully down; the live check after a deploy only catches it when it is down right after that deploy.
 
 ## Use
 
@@ -121,6 +157,8 @@ jobs:
           budget-mode: absolute   # new site; "baseline" while migrating an old one
           site-rules: absolute
           server-queries: server-queries.json   # a server with a database
+          observability: observability.json     # a server: logs and request ids
+          slo: slo.json                         # a server: written target
 ```
 
 The workflow must also run on `push` to the default branch, so main's numbers are saved. Dependabot: copy `templates/dependabot.yml`.

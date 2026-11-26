@@ -42,6 +42,16 @@ fails even on the first run and with --no-fail):
   - a configuration error (counter differs from the kit's, the query header
     switched on in a wrangler config, the server did not answer).
 A database query inside a loop (--query-loop) only warns.
+
+Logs and request ids of a server (--observability, from
+server_observability.py; always a rule, like the database checks):
+  - a configuration error (helper not the kit's copy, server did not answer);
+  - a route without x-request-id, one that does not echo a valid caller id or
+    keeps an invalid one, a request without its JSON log line, a JSON log line
+    without request_id, personal data in a log line;
+  - console.* outside the log helper (mode "baseline": up to the
+    repository's baseline, which may not grow against main).
+An invalid slo.json (--slo, from slo.py validate) fails too.
 """
 import argparse
 import glob
@@ -246,6 +256,10 @@ def collect(a):
                            "notes": r.get("notes", [])}
         for k in SITE_RULES:
             m[k] = r[k]
+    if a.observability:
+        m["observability"] = json.load(open(a.observability))
+    if a.slo:
+        m["slo"] = json.load(open(a.slo))
     for item in a.legacy or []:
         prefix, path = item.split(":", 1) if ":" in item and not os.path.exists(item) else (".", item)
         m.setdefault("modern", []).extend(legacy_cases(path, prefix))
@@ -321,6 +335,9 @@ SERVER_LABELS = {"config": "Database check: configuration",
                  "scans": "Missing index (full table scan)",
                  "unpaged": "List routes without pagination",
                  "fetch": "External call without a time limit"}
+OBS_LABELS = {"config": "Logs check: configuration",
+              "ids": "Request id and JSON log per request",
+              "console": "console.* outside the log helper"}
 
 
 # Lab numbers move a little between runs of the same code; in baseline mode a
@@ -511,6 +528,51 @@ def server_rows(s, bs, row, details):
     return hard
 
 
+def obs_rows(o, bo, row, details):
+    """Panel rows of the logs and request id checks. Returns the failures (all hard)."""
+    hard = []
+    bo = bo or {}
+    if not bo.get("console_ran"):
+        bo = {}  # the lint did not run on main (bad config, old kit): nothing to compare with
+    if o["errors"]:
+        row(False, True, T(OBS_LABELS["config"]), str(len(o["errors"])), T("none"), "—")
+        hard.append("logs check configuration")
+        details += [f"<details open><summary>{T(OBS_LABELS['config'])}</summary>", ""]
+        details += [f"- {e}" for e in o["errors"]] + ["", "</details>", ""]
+    if o["routes"] or o["log_problems"]:
+        bad = [r for r in o["routes"] if not r["ok"]]
+        ok = not bad and not o["log_problems"]
+        now = f"{len(o['routes']) - len(bad)}/{len(o['routes'])} " + T("routes")
+        if o["log_problems"]:
+            now += "; " + T("{n} log problems").format(n=len(o["log_problems"]))
+        row(ok, False, T(OBS_LABELS["ids"]), now, T("every route and every line"), "—")
+        if not ok:
+            hard.append("request id and logs")
+            details += [f"<details open><summary>{T(OBS_LABELS['ids'])}</summary>", ""]
+            details += [f"- 🔴 `{r['route']}`: " + "; ".join(r["problems"]) for r in bad]
+            details += [f"- 🔴 {p['problem']} ({p['count']}): `{p['example']}`" for p in o["log_problems"]]
+            details += ["", "</details>", ""]
+    cases = o["console"]
+    allowed = o.get("console_allowed", 0)
+    over = max(0, len(cases) - allowed)
+    grew = bool(bo) and o.get("baseline_console", 0) > bo.get("baseline_console", 0)
+    if cases or allowed:
+        ok = not over and not grew
+        now = str(len(cases)) + (" (" + T("{n} in the baseline").format(n=min(len(cases), allowed)) + ")" if allowed else "")
+        vs = "—" if not bo else arrow(len(cases) - len(bo.get("console", [])), higher_is_better=False)
+        row(ok, bool(cases), T(OBS_LABELS["console"]), now, T("none; baseline never grows"), vs)
+        if not ok:
+            hard.append(OBS_LABELS["console"])
+        if cases:
+            details += [f"<details{' open' if not ok else ''}><summary>{T(OBS_LABELS['console'])}</summary>", ""]
+            details += [f"- {'🔴' if not ok else '🟡'} `{c['file']}:{c['line']}` `{c['text']}`" for c in cases[:40]]
+            details += ["", "</details>", ""]
+    elif not o["errors"]:
+        row(True, False, T(OBS_LABELS["console"]), "0", T("none; baseline never grows"),
+            "—" if not bo else arrow(-len(bo.get("console", [])), higher_is_better=False))
+    return hard
+
+
 def compare(a):
     global LANG, PT
     LANG = a.lang
@@ -624,10 +686,30 @@ def compare(a):
         hard_failed += hard
 
     db_hard = []
+    rule_hard = []  # other always-on rules (slo.json, logs)
     if "server_queries" in head:
         hard = db_hard = server_rows(head["server_queries"], base.get("server_queries"), row, details)
         failed += hard
         hard_failed += hard
+
+    if "slo" in head:
+        v = head["slo"]
+        if v["errors"]:
+            row(False, False, T("Service level objective (slo.json)"), str(len(v["errors"])), T("a valid target"), "—")
+            failed.append("slo.json")
+            hard_failed.append("slo.json")
+            rule_hard.append("slo.json")
+            details += [f"<details open><summary>{T('Service level objective (slo.json)')}</summary>", ""]
+            details += [f"- {e}" for e in v["errors"]] + ["", "</details>", ""]
+        else:
+            row(True, False, T("Service level objective (slo.json)"),
+                f"{v['availability_pct']}% · p95 {v['latency_p95_ms']} ms · {v['owner']}", T("a valid target"), "—")
+
+    if "observability" in head:
+        hard = obs_rows(head["observability"], base.get("observability"), row, details)
+        failed += hard
+        hard_failed += hard
+        rule_hard += hard
 
     if "audit" in head:
         v, bv = head["audit"], base.get("audit")
@@ -656,8 +738,9 @@ def compare(a):
     print("\n".join(out))
     if hard_failed and a.no_fail:
         site = {dict(CASE_METRICS)[k] for k in SITE_RULES} | {"site rules configuration"}
-        groups = [("Performance budget", [x for x in hard_failed if x not in site and x not in db_hard]),
-                  ("Rule broken", [x for x in hard_failed if x in db_hard]),
+        rules = set(db_hard) | set(rule_hard)
+        groups = [("Performance budget", [x for x in hard_failed if x not in site and x not in rules]),
+                  ("Rule broken", [x for x in hard_failed if x in rules]),
                   ("Site rules", [x for x in hard_failed if x in site])]
         for name, broken in groups:
             if broken:
@@ -693,6 +776,8 @@ def main():
     c.add_argument("--server-queries", help="server_queries.py check output")
     c.add_argument("--query-loop", help="tools/query_in_loop.mjs output (cases)")
     c.add_argument("--site-rules", help="site_rules.py check output")
+    c.add_argument("--observability", help="server_observability.py check output")
+    c.add_argument("--slo", help="slo.py validate output")
     c.add_argument("--legacy", action="append", help="'dir:file' from modern-web-guidance legacy-scan --json")
     k = sub.add_parser("compare")
     k.add_argument("base")

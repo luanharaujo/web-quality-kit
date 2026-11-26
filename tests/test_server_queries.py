@@ -217,6 +217,8 @@ check("baseline.unpaged tolerates a list that does not page, not a route that fa
 badbase = sq.check(cfg("bad", mode="baseline", routes=[], baseline={"fetch": ["fetch(u)"]}), ROOT)
 check("a malformed baseline.fetch is a configuration error, not a crash", any("baseline.fetch" in e for e in badbase["errors"]), badbase["errors"])
 check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)
+moved = sq.check(cfg("good", routes=[{"route": "GET /old-orders"}]), ROOT)
+check("a list route that redirects is an error, not 0 queries", any("answered 301" in e for e in moved["errors"]), moved["errors"])
 
 # --- exemptions ------------------------------------------------------------------
 ex = sq.check(cfg("bad", exempt_tables={"orders": "fixed list of 10 rows"}), ROOT)

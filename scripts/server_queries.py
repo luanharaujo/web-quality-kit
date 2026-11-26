@@ -67,14 +67,14 @@ import json
 import os
 import re
 import shutil
-import socket
 import sqlite3
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.error
 import urllib.request
+
+from server_run import Server, fill, get, redact, run  # noqa: F401  (shared with server_observability.py)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(HERE)
@@ -107,7 +107,7 @@ def scan_routes(cfg, root):
     if cfg.get("routes_command"):
         out = subprocess.run(cfg["routes_command"], shell=True, cwd=root, capture_output=True, text=True)
         if out.returncode:
-            raise RuntimeError(f"routes_command failed: {out.stderr.strip()[:300]}")
+            raise RuntimeError(f"routes_command failed: {redact(out.stderr.strip(), keep=300)}")
         found = {route_key(l): "" for l in out.stdout.splitlines() if l.strip()}
     else:
         sys.path.insert(0, HERE)
@@ -120,81 +120,6 @@ def scan_routes(cfg, root):
         where = res.get("where", {})
         found = {route_key(r): where.get(r, "") for r in res.get("routes", [])}
     return {k: v for k, v in found.items() if k.startswith("GET ")}
-
-
-# --- server ------------------------------------------------------------------
-
-def free_port():
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def fill(text, **kw):
-    for k, v in kw.items():
-        text = text.replace("{" + k + "}", str(v))
-    return text
-
-
-def run(cmd, root, what):
-    out = subprocess.run(cmd, shell=True, cwd=root, capture_output=True, text=True)
-    if out.returncode:
-        raise RuntimeError(f"{what} failed (exit {out.returncode}): {(out.stderr or out.stdout).strip()[-400:]}")
-    return out.stdout
-
-
-def get(url, headers, timeout=30, body=False):
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310: local server, http(s) only
-        data = r.read()
-        return (r.status, r.headers, data) if body else (r.status, r.headers)
-
-
-class Server:
-    def __init__(self, cfg, root, tmp):
-        srv = cfg["server"]
-        self.port = free_port()
-        self.base = fill(srv["url"], port=self.port).rstrip("/")
-        if not self.base.startswith(("http://127.0.0.1", "http://localhost")):
-            raise RuntimeError("server.url must be a local address (127.0.0.1 or localhost)")
-        self.log = open(os.path.join(tmp, "server.log"), "w")
-        self.proc = subprocess.Popen(fill(srv["start"], port=self.port, tmp=tmp), shell=True, cwd=root,
-                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
-        ready = self.base + srv.get("ready", "/")
-        deadline = time.time() + float(srv.get("timeout", 90))
-        while time.time() < deadline:
-            if self.proc.poll() is not None:
-                self.fail(f"the server stopped (exit {self.proc.returncode})")
-            try:
-                get(ready, {}, timeout=5)
-                return
-            except (urllib.error.URLError, OSError):
-                time.sleep(0.5)
-        self.fail(f"the server did not answer {ready}")
-
-    def fail(self, why):
-        # Never leave the server running when it did not get ready.
-        text = self.tail()
-        self.stop()
-        raise RuntimeError(f"{why}: {text}")
-
-    def tail(self):
-        self.log.flush()
-        with open(self.log.name) as f:
-            return f.read()[-400:]
-
-    def stop(self):
-        try:
-            os.killpg(self.proc.pid, 15)
-            self.proc.wait(10)
-        except (ProcessLookupError, subprocess.TimeoutExpired, PermissionError):
-            try:
-                os.killpg(self.proc.pid, 9)
-            except (ProcessLookupError, PermissionError):
-                pass
-        self.log.close()
 
 
 def headers_for(cfg, root, tmp, server):
@@ -217,13 +142,19 @@ def measure(cfg, root, tmp, server, routes):
             try:
                 # Twice: the larger count wins, so a cache that answers the
                 # second call cannot hide an N+1 (0 and 0 would pass).
-                calls = [get(url, {**headers, **r.get("headers", {})})[1] for _ in range(2)]
+                answers = [get(url, {**headers, **r.get("headers", {})}) for _ in range(2)]
             except urllib.error.HTTPError as e:
                 errors.append(f"{r['route']} with {n} rows: HTTP {e.code}")
                 continue
             except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
                 errors.append(f"{r['route']} with {n} rows: {e}")
                 continue
+            moved = [st for st, _ in answers if 300 <= st < 400]
+            if moved:
+                errors.append(f"{r['route']} with {n} rows: answered {moved[0]}, a redirect is not a list "
+                              f"(test the final path)")
+                continue
+            calls = [h for _, h in answers]
             values = [h.get("x-db-queries") for h in calls]
             if None in values:
                 errors.append(f"{r['route']}: no x-db-queries header (is the handler wrapped by withQueryCount, "
