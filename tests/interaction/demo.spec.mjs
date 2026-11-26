@@ -1,7 +1,7 @@
 // Each page does the normal thing a person does; the kit's fixture checks it.
 // The bad pages must be caught (check_report.mjs knows which rule each one
 // breaks); the good pages must pass everything.
-import { test, expect, expectIdempotent } from 'web-quality-kit-interaction';
+import { test, expect, expectIdempotent, ciTimeout } from 'web-quality-kit-interaction';
 
 const bookings = ['good', 'good-reads', 'good-key', 'good-bg', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error', 'bad-request-id'];
 
@@ -11,7 +11,7 @@ for (const v of bookings) {
     await page.getByLabel('Name').fill('Test User');
     await page.getByRole('button', { name: 'Book' }).click();
     // a person waits for the answer; on a failure pass the kit clicks retry
-    await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {});
+    await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {}); // kit:short-timeout fails on purpose on the bad pages
   });
 }
 
@@ -28,7 +28,7 @@ for (const v of ['good', 'bad']) {
 for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search', 'list-readonly', 'list-prefilled', 'list-excluded', 'list-poll', 'list-static', 'list-hidden']) {
   test(`list ${v}`, async ({ page }) => {
     await page.goto(`/list.html?v=${v}`);
-    await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });
   });
 }
 
@@ -40,15 +40,15 @@ test('list list-mocked (slow route handler in the test)', async ({ page }) => {
     await route.fulfill({ json: ['Handstand basics', 'Partner balance'] });
   });
   await page.goto('/list.html?v=list-mocked');
-  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });
 });
 
 test('list list-filter (A, B, A again is three actions)', async ({ page }) => {
   await page.goto('/list.html?v=list-filter');
-  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });
   for (const level of ['b', 'a', 'b']) {
     await page.getByLabel('Level').selectOption(level);
-    await expect(page.getByRole('status')).toHaveText('', { timeout: 8000 });
+    await expect(page.getByRole('status')).toHaveText('', { timeout: ciTimeout(8000) });
   }
 });
 

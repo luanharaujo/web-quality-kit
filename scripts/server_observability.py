@@ -49,7 +49,7 @@ import urllib.error
 import urllib.request
 
 import server_run
-from server_run import OPENER, Server, fill, run
+from server_run import OPENER, Server, ci_floor, fill, run
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(HERE)
@@ -80,7 +80,7 @@ def call(base, route, headers):
         h.setdefault("content-type", "application/json")
     req = urllib.request.Request(base + path, data=data, method=method.upper(), headers=h)
     try:
-        with OPENER.open(req, timeout=30) as r:  # nosec B310: local server, http only; redirects not followed
+        with OPENER.open(req, timeout=ci_floor(30, 60)) as r:  # nosec B310: local server, http only; redirects not followed
             r.read()
             return r.status, r.headers
     except urllib.error.HTTPError as e:

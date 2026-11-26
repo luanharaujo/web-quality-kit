@@ -237,6 +237,14 @@
    },
    {
     "match": [
+     "Short test time limit"
+    ],
+    "name": "Short test time limit",
+    "means": "A test or test script fixes a time limit under 30 s (or keeps the 5 s default of vitest or Playwright). In CI the machine may be slow, and the test would turn red without a real error. The kit's helpers keep 30 s or more there.",
+    "rigor": "warns"
+   },
+   {
+    "match": [
      "Database query inside a loop"
     ],
     "name": "Database query inside a loop",
@@ -638,6 +646,15 @@
     "name": "Banco: configuração da checagem",
     "means": "A checagem não conseguiu rodar como está configurada: contador de consultas diferente do do kit, cabeçalho do contador ligado na configuração de produção, ou o servidor local não respondeu.",
     "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Tempo limite curto em teste",
+     "Short test time limit"
+    ],
+    "name": "Tempo limite curto em teste",
+    "means": "Um teste ou script de teste fixa um tempo limite abaixo de 30 s (ou usa o padrão de 5 s do vitest ou do Playwright). No CI a máquina pode estar lenta, e o teste fica vermelho sem erro de verdade. As funções do kit garantem 30 s ou mais lá.",
+    "rigor": "warns"
    },
    {
     "match": [

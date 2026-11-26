@@ -26,16 +26,20 @@
 //   scripts/interaction_gate.py compare with main)
 // KIT_INTERACTION_REPORT_DIR  where results go (default test-results/kit-interaction)
 // KIT_INTERACTION_CONFIG  path of interaction.json (default ./interaction.json)
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, defineConfig as playwrightConfig } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WRITE_METHODS, routeKey, keyMatches } from './routes.mjs';
 import { settings, report } from './report.mjs';
 import { Reads } from './reads.mjs';
+import { ciTimeout, ciLimits } from './ci.mjs';
 
 export { expect };
-export { defineConfig, devices } from '@playwright/test';
+export { devices } from '@playwright/test';
+export { ciTimeout } from './ci.mjs';
+/** Playwright's defineConfig with the CI floors on the time limits (ci.mjs). */
+export const defineConfig = (...configs) => ciLimits(playwrightConfig(...configs));
 export { expectIdempotent } from './contract.mjs';
 export { routeKey, keyMatches, normalizePath } from './routes.mjs';
 export { settings, report } from './report.mjs';
@@ -87,6 +91,10 @@ function claim(mode, key) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// How many 100 ms looks the checks give the page to show something: they stop
+// as soon as it does, and in CI a slow machine gets 10 s instead of 3.
+const looks = (local) => ciTimeout(local * 100, 10_000) / 100;
 
 function isUpload(request) {
   const type = (request.headers()['content-type'] || '').toLowerCase();
@@ -304,9 +312,9 @@ class Interaction {
     await proceed();
 
     if (upload) {
-      await Promise.race([request.response().catch(() => null), sleep(5000)]);
+      await Promise.race([request.response().catch(() => null), sleep(ciTimeout(5000))]);
       let confirmed = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < looks(30); i++) {
         try { confirmed = await page.evaluate(() => window.__kit.confirmation()); } catch { confirmed = null; }
         if (confirmed && (confirmed.newImage || (confirmed.size && confirmed.type))) break;
         await sleep(100);
@@ -330,7 +338,7 @@ class Interaction {
     const retry = page.getByRole('button', { name: this.retry });
     let alertOk = false;
     let retryOk = false;
-    for (let i = 0; i < 30 && !(alertOk && retryOk); i++) {
+    for (let i = 0; i < looks(30) && !(alertOk && retryOk); i++) {
       await sleep(100);
       alertOk = await alert.first().isVisible().catch(() => false);
       retryOk = await retry.first().isVisible().catch(() => false);
@@ -361,7 +369,7 @@ class Interaction {
       const mine = this.seen.find((s) => s.request === request);
       const since = mine ? mine.at : abortedAt;
       const others = () => this.seen.filter((s) => s.key === key && s.request !== request && s.at >= since).length;
-      for (let i = 0; i < 50 && others() < before.files - 1; i++) await sleep(100);
+      for (let i = 0; i < looks(50) && others() < before.files - 1; i++) await sleep(100);
       if (others() < before.files - 1) this.fail(key, 'upload-independent', `one failed file stopped the others (${others()} of ${before.files - 1} went on)`);
       else this.pass(key, 'upload-independent');
     }
@@ -369,9 +377,9 @@ class Interaction {
     if (retryOk) {
       const sentBefore = this.seen.filter((s) => s.key === key).length;
       const lastRetry = upload ? retry.first() : retry.last();
-      await lastRetry.click({ timeout: 2000 }).catch(() => {});
+      await lastRetry.click({ timeout: ciTimeout(2000, 10_000) }).catch(() => {});
       let again = false;
-      for (let i = 0; i < 30 && !again; i++) {
+      for (let i = 0; i < looks(30) && !again; i++) {
         await sleep(100);
         again = this.seen.filter((s) => s.key === key).length > sentBefore;
       }

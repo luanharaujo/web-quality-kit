@@ -1,15 +1,15 @@
 // fetch(new Request(...)) and a Worker forwarding its incoming request.
 export default { async fetch(request, env) {
-  await fetch(new Request("/x", { signal: AbortSignal.timeout(10) }))
-  await fetch(new Request("https://api.example.com/x", { signal: AbortSignal.timeout(10) }))
+  await fetch(new Request("/x", { signal: AbortSignal.timeout(10) })) // kit:short-timeout a case for the server checks, never run as a test
+  await fetch(new Request("https://api.example.com/x", { signal: AbortSignal.timeout(10) })) // kit:short-timeout a case for the server checks, never run as a test
   await fetch(new Request("https://api.example.com/y"))
-  await fetch(new Request("https://api.example.com/z"), { signal: AbortSignal.timeout(10) })
+  await fetch(new Request("https://api.example.com/z"), { signal: AbortSignal.timeout(10) }) // kit:short-timeout a case for the server checks, never run as a test
   return fetch(request)
 }}
 const other = (request) => fetch(request)
 const api = { fetch(url) { return fetch(url) } }
 const late = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(999999) })
-const early = (u, init) => fetch(u, { signal: AbortSignal.timeout(5000), ...init })
+const early = (u, init) => fetch(u, { signal: AbortSignal.timeout(5000), ...init }) // kit:short-timeout a case for the server checks, never run as a test
 const proto = () => fetch('//api.example.com/x')
 const MINUTE = 60 * 1000
 const longish = (u) => fetch(u, { signal: AbortSignal.timeout(MINUTE) })

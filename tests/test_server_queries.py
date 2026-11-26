@@ -134,7 +134,10 @@ check("a response cache cannot hide an N+1 (the larger of the two calls counts)"
 miss = sq.check(cfg("good", source=["tests/cases/server/handlers_good.mjs", "tests/cases/server/nope"]), ROOT)
 check("a source folder that does not exist is a configuration error", any("nope does not exist" in e for e in miss["errors"]), miss["errors"])
 hang = cfg("good", server={"start": "sleep 31.4", "url": "http://127.0.0.1:{port}", "ready": "/health", "timeout": 2})
+ci = os.environ.pop("CI", None)  # in CI the start limit has a floor (test_timeouts.py)
 hr = sq.check(hang, ROOT)
+if ci is not None:
+    os.environ["CI"] = ci
 alive = subprocess.run(["pgrep", "-f", "sleep 31.4"], capture_output=True).returncode == 0
 check("a server that never gets ready is an error and is not left running", any("did not answer" in e for e in hr["errors"]) and not alive, hr["errors"])
 check("a server that failed leaves pagination and indexes unmeasured", hr["measured"]["unpaged"] is False and hr["measured"]["scans"] is False, hr["measured"])

@@ -289,6 +289,8 @@ def collect(a):
         m["server_queries"] = json.load(open(a.server_queries))
     if a.query_loop:
         m["query_loop"] = json.load(open(a.query_loop))
+    if a.timeouts:
+        m["timeouts"] = json.load(open(a.timeouts))
     if a.knip:
         try:
             m["knip"] = knip_cases(a.knip)
@@ -374,9 +376,10 @@ CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
                 ("modern", "Modern web: old code with a native replacement (warning only)"),
                 ("query_loop", "Database query inside a loop (warning only)"),
                 ("cache", "Cache headers"), ("fonts", "Fonts"), ("images", "Images"),
-                ("knip", "Unused code and dependencies (knip)")]
+                ("knip", "Unused code and dependencies (knip)"),
+                ("timeouts", "Short test time limit (warning only)")]
 SITE_RULES = ("cache", "fonts", "images")
-WARN_ONLY = {"modern", "query_loop"}
+WARN_ONLY = {"modern", "query_loop", "timeouts"}
 SERVER_LABELS = {"config": "Database check: configuration",
                  "n1": "Database queries per list (3 vs 30 rows)",
                  "uncovered": "List routes without the 3-vs-30 test",
@@ -924,6 +927,7 @@ def main():
     c.add_argument("--budget", help="budget.py check output")
     c.add_argument("--server-queries", help="server_queries.py check output")
     c.add_argument("--query-loop", help="tools/query_in_loop.mjs output (cases)")
+    c.add_argument("--timeouts", help="timeout_check.py output (cases)")
     c.add_argument("--knip", help="knip --reporter json output")
     c.add_argument("--knip-mode", choices=["absolute", "baseline"], default="baseline")
     c.add_argument("--site-rules", help="site_rules.py check output")
