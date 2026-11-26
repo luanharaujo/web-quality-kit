@@ -13,6 +13,7 @@ Skips with a notice on a fork or Dependabot pull request (read-only token) and w
 newer commit was pushed (its own run writes the link). A missing permission fails the
 step; GitHub being down only warns.
 """
+import http.client
 import json
 import os
 import re
@@ -135,7 +136,7 @@ def run(env, event, apiurl):
             e.code, "the job needs `pull-requests: write`")
         print(f"::error::Preview link not written (HTTP {e.code}): {why}.")
         return 1
-    except OSError as e:
+    except (OSError, http.client.HTTPException, ValueError) as e:  # also a cut or non-JSON answer
         print(f"::warning::Preview link not written: could not reach the GitHub API ({e})."); return 0
     print("preview link written at the top of the description")
     return 0
