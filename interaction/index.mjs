@@ -46,9 +46,10 @@ export const DEFAULTS = {
   holdMs: 2000,
   busyWithinMs: 400,
   userWindowMs: 1500,
-  success:
-    '\\b(marcad[oa]s?|confirmad[oa]s?|reservad[oa]s?|agendad[oa]s?|pag[oa]|salv[oa]s?|enviad[oa]s?|conclu[ií]d[oa]s?|sucesso|booked|confirmed|reserved|scheduled|paid|saved|sent|success(fully)?|done)\\b',
-  retry: '(tentar (de )?novo|tentar novamente|repetir|reenviar|retry|try again)',
+  // English by default. An app in another language sets "success" and "retry"
+  // in its interaction.json (each replaces the whole pattern, so list English too).
+  success: '\\b(booked|confirmed|reserved|scheduled|paid|saved|sent|success(fully)?|done)\\b',
+  retry: '(retry|try again)',
   optimistic: [],
   exclude: [],
 };

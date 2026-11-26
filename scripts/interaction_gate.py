@@ -38,8 +38,8 @@ Q = "['\"`]"
 # Shapes the scan knows (see scan()): app.post('/x'), router.delete("/x/:id"),
 # route('POST', '/x'), register('PUT', 'videos/#id'), and the two below.
 # method === 'POST' && path === '/x'   (and the other order)
-RE_IF = re.compile(rf"\bmethod\s*===?\s*(['\"])({M})\1\s*&&\s*[\w.]*(?:path|pathname|url|rota|route)\w*\s*===?\s*({Q})([^'\"`]+)\3", re.I)
-RE_IF_REV = re.compile(rf"[\w.]*(?:path|pathname|url|rota|route)\w*\s*===?\s*({Q})([^'\"`]+)\1\s*&&\s*[\w.]*method\s*===?\s*(['\"])({M})\3", re.I)
+RE_IF = re.compile(rf"\bmethod\s*===?\s*(['\"])({M})\1\s*&&\s*[\w.]*(?:path|pathname|url|route)\w*\s*===?\s*({Q})([^'\"`]+)\3", re.I)
+RE_IF_REV = re.compile(rf"[\w.]*(?:path|pathname|url|route)\w*\s*===?\s*({Q})([^'\"`]+)\1\s*&&\s*[\w.]*method\s*===?\s*(['\"])({M})\3", re.I)
 # a write method compared somewhere: a route the scan could not name
 RE_COMPARE = re.compile(rf"===?\s*(['\"])({M})\1|(['\"])({M})\3\s*===?")
 
