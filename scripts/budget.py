@@ -66,6 +66,9 @@ STATIC_DEFAULTS = {
     "img_eager": 2,
 }
 DEFAULTS = {**LH_DEFAULTS, **STATIC_DEFAULTS}
+# Goals of the live site (site_slo.py). Stricter only: availability may go up,
+# LCP p75 may go down; the window is a choice between a week and a quarter.
+SLO_DEFAULTS = {"availability_pct": 99.9, "lcp_p75_ms": 2500, "window_days": 28}
 RULES = ("cache-headers-file", "cache-hashed", "cache-html", "font-cdn", "font-format", "font-weights",
          "font-subset", "img-alt", "img-size", "img-format", "img-lazy", "img-px", "img-kb")
 # Slowest acceptable lab profile: Lighthouse's default mobile "Slow 4G".
@@ -114,7 +117,31 @@ def load(path, today, mode="absolute"):
         except (re.error, TypeError):
             errors.append(f"cache.hashed_extra: {pat!r} is not a regular expression")
     return {"limits": limits, "exceptions": exceptions, "errors": errors, "hashed": good,
-            "hashed_dirs": [d.lstrip("/") for d in hashed_dirs]}
+            "hashed_dirs": [d.lstrip("/") for d in hashed_dirs], "slo": load_slo(cfg.get("slo"), errors)}
+
+
+def load_slo(raw, errors):
+    """The live-site goals, stricter than the kit's only."""
+    slo = dict(SLO_DEFAULTS)
+    if raw is None:
+        return slo
+    if not isinstance(raw, dict):
+        errors.append("slo: must be an object")
+        return slo
+    for k, v in raw.items():
+        if k not in SLO_DEFAULTS:
+            errors.append(f"slo.{k}: unknown goal (known: {', '.join(SLO_DEFAULTS)})")
+        elif not isinstance(v, (int, float)) or isinstance(v, bool):
+            errors.append(f"slo.{k}: must be a number")
+        elif k == "availability_pct" and not SLO_DEFAULTS[k] <= v <= 100:
+            errors.append(f"slo.availability_pct = {v}: between the kit's {SLO_DEFAULTS[k]} and 100 (only stricter)")
+        elif k == "lcp_p75_ms" and not 0 < v <= SLO_DEFAULTS[k]:
+            errors.append(f"slo.lcp_p75_ms = {v}: above 0 and at most the kit's {SLO_DEFAULTS[k]} (only stricter)")
+        elif k == "window_days" and not (7 <= v <= 90 and float(v).is_integer()):
+            errors.append(f"slo.window_days = {v}: a whole number of days from 7 to 90")
+        else:
+            slo[k] = int(v) if k == "window_days" else v
+    return slo
 
 
 def load_config(path, today):

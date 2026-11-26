@@ -144,7 +144,24 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
           base-url: https://example.com
           pages-artifact: "true"   # the files actions/deploy-pages published in this run
           paths: / /adm/versao.json /treinos/
+          cache-check: "true"      # also the real Cache-Control the host answers
 ```
+
+`cache-check: "true"` asks the live site for the same cache rules as `site-rules` (a year + `immutable` on hashed files, at most 600 s on pages): a host that ignores `_headers` fails here even when the file was right. Hashed files are the kit's build folders plus `cache.hashed_dirs` / `hashed_extra` from `budget-file` (check out the repo in that job), at most 30 of them per run.
+
+## Every week: are the goals safe? (`actions/web-monitor`)
+
+Copy `templates/web-monitor.yml`. Every Monday it runs Lighthouse on the live site (phone, slow network, 3 runs per page) and keeps each page's LCP p75 in a history artifact. Goals come from `web-budget.json`, stricter only:
+
+```json
+"slo": {"availability_pct": 99.9, "lcp_p75_ms": 2500, "window_days": 28}
+```
+
+- 🟢 the window meets the goal and so does this week: the run is green, nobody is told.
+- 🟡 at risk: this week is over the goal, or half of the availability error budget is spent. The run fails, so GitHub emails the owner.
+- 🔴 breached: the window's p75 is over the goal, or the whole error budget is spent.
+
+Availability needs a prober that writes `ISO time,1|0` lines (`probes-file`); an outage itself is the prober's alarm, this job only answers "will we miss the goal this month?". Lab numbers are not real users' numbers: they are the same phone every week, which is what makes a trend.
 
 ## Node.js updates (`actions/node-update`)
 

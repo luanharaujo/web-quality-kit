@@ -1,0 +1,105 @@
+# Weekly check of the live site against its goals (web-budget.json "slo"):
+# LCP p75 on a phone with a slow network, over a window of weeks, and, when a
+# prober writes a log, availability against its error budget. Green when the
+# goals are safe; the job fails (and GitHub tells the owner) only when a goal
+# is at risk or already missed. An outage itself is the prober's alarm, not
+# this one.
+#
+# The history of weekly numbers lives in the `web-monitor-history` artifact of
+# the last run of the same workflow (90 days), so the job needs
+# `permissions: actions: read`. Set up Node (actions/setup-node) before it.
+# Template: templates/web-monitor.yml.
+name: Web monitor
+description: Weekly LCP p75 and availability of the live site against its goals.
+
+inputs:
+  base-url:
+    description: Address of the live site.
+    required: true
+  paths:
+    description: Pages to measure, space separated.
+    default: /
+  budget-file:
+    description: The repo's budget file (its "slo" entry has the goals; none = the kit's goals).
+    default: web-budget.json
+  runs:
+    description: Lighthouse runs per page (the week's number is their p75).
+    default: "3"
+  probes-file:
+    description: >
+      Optional prober log, one "ISO time,1|0" line per probe (1 = up). Empty =
+      no availability check.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Last week's history
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/web-monitor"
+        file="${GITHUB_WORKFLOW_REF%%@*}"; file="${file##*/}"
+        # A week at risk fails the job, so look at completed runs, not only green ones.
+        found=""
+        for run in $(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --status completed --limit 5 \
+                     --json databaseId -q '.[].databaseId' 2>/dev/null); do
+          if gh run download "$run" -R "$GITHUB_REPOSITORY" -n web-monitor-history -D "$RUNNER_TEMP/web-monitor" 2>/dev/null; then
+            found="$run"; break
+          fi
+        done
+        [[ -n "$found" ]] && echo "history from run $found" || echo "::notice::No history yet: this week starts it."
+        touch "$RUNNER_TEMP/web-monitor/history.jsonl"
+
+    - name: Measure the live site
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        BASE_URL: ${{ inputs.base-url }}
+        PATHS: ${{ inputs.paths }}
+        RUNS: ${{ inputs.runs }}
+      run: |
+        [[ -x "$KIT/tools/node_modules/.bin/lhci" ]] || (cd "$KIT/tools" && npm ci --ignore-scripts --no-fund --no-audit --loglevel=error)
+        urls=()
+        for p in $PATHS; do urls+=(--url "${BASE_URL%/}$p"); done
+        rm -rf .lighthouseci
+        "$KIT/tools/node_modules/.bin/lhci" collect "${urls[@]}" -n "$RUNS" \
+          --settings.chromeFlags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+          --settings.formFactor=mobile --settings.throttlingMethod=simulate > "$RUNNER_TEMP/web-monitor/lhci.log" 2>&1 \
+          || { echo "::warning::Lighthouse did not finish"; tail -20 "$RUNNER_TEMP/web-monitor/lhci.log"; }
+        rm -rf "$RUNNER_TEMP/web-monitor/lhci"
+        [[ -d .lighthouseci ]] && mv .lighthouseci "$RUNNER_TEMP/web-monitor/lhci"
+        mkdir -p "$RUNNER_TEMP/web-monitor/lhci"
+
+    - name: Judge the goals
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        BUDGET_FILE: ${{ inputs.budget-file }}
+        PROBES: ${{ inputs.probes-file }}
+      run: |
+        out="$RUNNER_TEMP/web-monitor"
+        rc=0
+        python3 "$KIT/scripts/site_slo.py" lab "$out/lhci" --history "$out/history.jsonl" \
+          --config "$BUDGET_FILE" > "$out/report.md" || rc=1
+        if [[ -n "$PROBES" ]]; then
+          echo >> "$out/report.md"
+          python3 "$KIT/scripts/site_slo.py" probe "$PROBES" --config "$BUDGET_FILE" >> "$out/report.md" || rc=1
+        fi
+        cat "$out/report.md" >> "$GITHUB_STEP_SUMMARY"
+        cat "$out/report.md"
+        echo "WEB_MONITOR_RC=$rc" >> "$GITHUB_ENV"
+
+    - name: Keep the history
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: web-monitor-history
+        path: ${{ runner.temp }}/web-monitor/history.jsonl
+        retention-days: 90
+        if-no-files-found: ignore
+
+    - name: Goal at risk?
+      shell: bash
+      run: exit "${WEB_MONITOR_RC:-1}"
