@@ -5,19 +5,24 @@ const inCI = () => ['true', '1'].includes(String(process.env.CI ?? '').toLowerCa
 /** `local` on a laptop, never under `floor` in CI. 0 stays "no limit". */
 export const ciTimeout = (local, floor = 30_000) => (inCI() && local > 0 ? Math.max(local, floor) : local);
 
+// The failing-network pass breaks the test's own steps on purpose.
+const failing = () => process.env.KIT_INTERACTION_MODE === 'fail';
+
+/** A test's time limit: 90 s or more in CI, 60 s in the failing-network pass. */
+export const ciTestTimeout = (local) => ciTimeout(local, failing() ? 60_000 : 90_000);
+
 /** Floors of a Playwright config (and of each project). */
 export function ciLimits(config) {
   if (!inCI()) return config;
-  // The failing-network pass breaks the test's own steps on purpose: raising
-  // `expect` there would only make each broken step wait longer.
-  const failing = process.env.KIT_INTERACTION_MODE === 'fail';
+  // In the failing-network pass only the test limit goes up: longer waits would
+  // only make each broken step slower.
   const raise = (part, defaults) => {
     const out = { ...part };
-    if (defaults || out.timeout !== undefined) out.timeout = ciTimeout(out.timeout ?? 30_000, failing ? 60_000 : 90_000);
-    if (!failing && (defaults || out.expect?.timeout !== undefined)) {
+    if (defaults || out.timeout !== undefined) out.timeout = ciTestTimeout(out.timeout ?? 30_000);
+    if (!failing() && (defaults || out.expect?.timeout !== undefined)) {
       out.expect = { ...out.expect, timeout: ciTimeout(out.expect?.timeout ?? 5_000) };
     }
-    if (out.use) {
+    if (!failing() && out.use) {
       out.use = { ...out.use };
       for (const key of ['actionTimeout', 'navigationTimeout']) {
         if (out.use[key] > 0) out.use[key] = ciTimeout(out.use[key]);

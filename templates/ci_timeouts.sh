@@ -15,14 +15,15 @@ ci_limit() {
 }
 
 # wait_until <seconds> <command...>: run the command twice a second until it
-# succeeds (0) or the limit passes (1). It returns as soon as it succeeds.
+# succeeds (0) or the limit passes (1). It returns as soon as it succeeds. A
+# limit of 0 waits without limit.
 wait_until() {
   local limit end
   limit="$(ci_limit "$1")"
   shift
   end=$((SECONDS + limit))
   until "$@" >/dev/null 2>&1; do
-    if [ "$SECONDS" -ge "$end" ]; then return 1; fi
+    if [ "$limit" -gt 0 ] && [ "$SECONDS" -ge "$end" ]; then return 1; fi
     sleep 0.5
   done
 }

@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { WRITE_METHODS, routeKey, keyMatches } from './routes.mjs';
 import { settings, report } from './report.mjs';
 import { Reads } from './reads.mjs';
-import { ciTimeout, ciLimits } from './ci.mjs';
+import { ciTimeout, ciTestTimeout, ciLimits } from './ci.mjs';
 
 export { expect };
 export { devices } from '@playwright/test';
@@ -312,7 +312,7 @@ class Interaction {
     await proceed();
 
     if (upload) {
-      await Promise.race([request.response().catch(() => null), sleep(ciTimeout(5000))]);
+      await Promise.race([request.response().catch(() => null), sleep(ciTimeout(5000, 10_000))]);
       let confirmed = null;
       for (let i = 0; i < looks(30); i++) {
         try { confirmed = await page.evaluate(() => window.__kit.confirmation()); } catch { confirmed = null; }
@@ -404,6 +404,9 @@ class Interaction {
 
 export const test = base.extend({
   page: async ({ page }, use, testInfo) => {
+    // In CI the checks' own waits are longer: the test gets room for them even
+    // when its config does not come from the kit's defineConfig.
+    if (testInfo.timeout) testInfo.setTimeout(ciTestTimeout(testInfo.timeout));
     const checks = new Interaction(page, testInfo);
     await checks.install();
     await use(page);
