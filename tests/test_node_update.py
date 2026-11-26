@@ -84,6 +84,8 @@ expect("CRLF files keep CRLF", open(os.path.join(d, "package.json"), newline="")
        == '{\r\n  "engines": {"node": "22.21.1"}\r\n}\r\n' and open(os.path.join(d, ".nvmrc"), newline="").read() == "22.21.1\r\n", "")
 p = plan(repo({".nvmrc": "22\n"}))
 expect("a major alone already floats: nothing changes", p["files"] == [] and p["current"] is None, p)
+p = plan(repo({".nvmrc": "lts/*\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
+expect("an alias in .nvmrc: the engines floor is left alone", p["files"] == [], p)
 p = plan(repo({".nvmrc": "lts/*\n"}))
 expect("an alias already floats: nothing changes", p["files"] == [], p)
 p = plan(repo({"package.json": '{"engines": {"node": ">=20"}}'}))
@@ -124,6 +126,7 @@ case "$*" in
   "api repos/o/r -q .default_branch") echo main;;
   "api repos/o/r/git/ref/heads/main -q .object.sha") echo abc123;;
   "api repos/o/r/git/refs -f"*) echo '{}';;
+  "pr list -R o/r --head"*) [[ -n "$GH_BRANCH_ORPHAN" ]] && echo 0 || echo 1;;
   "pr list"*) echo '[{"number": 7, "headRefName": "kit/node-22.20.5", "isCrossRepository": false},
     {"number": 8, "headRefName": "kit/node-update-fix", "isCrossRepository": false},
     {"number": 9, "headRefName": "kit/node-22.19.0", "isCrossRepository": true}]';;
@@ -174,6 +177,10 @@ expect("action: the branch starts at the checked-out commit, not the base tip",
 expect("action: an older open proposal is closed", any(c.startswith("pr close 7") for c in calls), calls)
 expect("action: a hand-made kit/node-* branch and a fork's PR are left alone",
        not any(c.startswith(("pr close 8", "pr close 9")) for c in calls), calls)
+r, calls = action({".nvmrc": "22.20.0\n"}, GH_BRANCH_EXISTS="1", GH_BRANCH_ORPHAN="1")
+expect("action: a branch without any PR (interrupted run) is made again",
+       r.returncode == 0 and any(c.startswith("api -X DELETE") for c in calls)
+       and any(c.startswith("pr create") for c in calls), (r.stdout + r.stderr, calls))
 r, calls = action({".nvmrc": "22.20.0\n"}, GH_PUT_FAILS="1")
 expect("action: a failed commit deletes the branch (no orphan 'already proposed')",
        r.returncode != 0 and any(c.startswith("api -X DELETE") and "kit/node-22.21.1" in c for c in calls), (r.stderr, calls))
