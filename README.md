@@ -294,6 +294,8 @@ Two pieces, both with the event `pull_request` (never `pull_request_target`):
 
 Why: an `edited` event in a workflow with `cancel-in-progress` cancels the run on the same commit, and the cancelled checks keep the pull request red. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. A failed `pr-descricao` also stays on its commit after the description is fixed: push a new commit to clear it.
 
+Moving from the old single file: bumping the SHA alone changes nothing. Replace `pr-description.yml`, paste the `pr-verificacoes` job into the CI workflow, delete the old `pr-descricao` job there (one check per name) and remove `edited` from the CI workflow's types.
+
 ## Preview link (`actions/preview-link`)
 
 In a repository that publishes a preview for each pull request, the link is the **first line of the description**, so the reviewer opens it from the phone without scrolling. Run the action in the job that publishes the preview, after the URL was checked (`templates/preview-link.yml`, `pull-requests: write`):

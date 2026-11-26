@@ -2,7 +2,9 @@
 # of the CI workflow, next to templates/pr-description.yml (the required check).
 # It must be in the same file as the CI job and `needs:` it: `web-ci` saves the health
 # panel as the `pr-panel` artifact of that run. That workflow must not list `edited`
-# in its `pull_request` types. Same release SHA as the other kit actions.
+# in its `pull_request` types, and should cancel older runs of the same pull request
+# (`concurrency` by PR number), so an old run does not overwrite the comment.
+# Same release SHA as the other kit actions.
 jobs:
   pr-verificacoes:
     needs: [your-ci-job]
