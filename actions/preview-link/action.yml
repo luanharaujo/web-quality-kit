@@ -1,0 +1,31 @@
+# The preview link as the first line of the pull-request description, rewritten on
+# every push inside its own marker block (scripts/preview_link.py). Run it in the
+# job that publishes the preview, after the URL was checked, with
+# `pull-requests: write`. The body is only read and written back; nothing from it
+# is executed. Never `pull_request_target`.
+name: Preview link
+description: Keep the preview link at the top of the pull-request description.
+
+inputs:
+  url:
+    description: The https URL of this pull request's preview.
+    required: true
+  note:
+    description: Short text shown after the link, for example how to sign in. One line, no HTML. Optional.
+    default: ""
+  lang:
+    description: '"pt", "en" or "auto" (pt for a private repository, en for a public one).'
+    default: auto
+
+runs:
+  using: composite
+  steps:
+    - name: Preview link at the top of the description
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SCRIPT: ${{ github.action_path }}/../../scripts/preview_link.py
+        PREVIEW_URL: ${{ inputs.url }}
+        PREVIEW_NOTE: ${{ inputs.note }}
+        LANG_IN: ${{ inputs.lang }}
+      run: python3 -E "$SCRIPT"
