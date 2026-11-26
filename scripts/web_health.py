@@ -301,6 +301,8 @@ def collect(a):
                            "notes": r.get("notes", [])}
         for k in SITE_RULES:
             m[k] = r[k]
+    if a.auth:
+        m["auth"] = json.load(open(a.auth))
     if a.observability:
         m["observability"] = json.load(open(a.observability))
     if a.slo:
@@ -574,6 +576,70 @@ def server_rows(s, bs, row, details):
     return hard
 
 
+AUTH_LABELS = {"A0": "Login: declaration (.quality/auth.json)", "A1": "Login A1: method and password",
+               "A2": "Login A2: cheap filter before the costly step", "A3": "Login A3: Turnstile on the server",
+               "A4": "Login A4: same answer for known and unknown", "A5": "Login A5: never lock the owner out",
+               "A6": "Login A6: attempt event without personal data"}
+
+
+def auth_rows(x, bx, row, details):
+    """Panel rows of the login check. Every failure is hard (a rule: fails on
+    the first run and with --no-fail). In mode "baseline" the findings listed in
+    the repository's baseline are tolerated, and that list may not grow."""
+    hard = []
+    excepted = set(x.get("exception_ids") or [])
+    weaker = []
+    if bx:
+        # What main checked and this change stops checking.
+        weaker += [f"route_removed:{r}" for r in bx.get("routes") or [] if r not in (x.get("routes") or [])]
+        before_src, src = set(bx.get("source") or ["."]), set(x.get("source") or ["."])
+        if bx.get("routes") and "." not in src and before_src - src:
+            weaker.append("source_narrowed")
+        weaker += [f"d1_calls_removed:{c}" for c in bx.get("d1_calls") or [] if c not in (x.get("d1_calls") or [])]
+        if bx.get("routes") and bx.get("mode") == "absolute" and x.get("mode") == "baseline":
+            weaker.append("mode:baseline")
+        # The switch to baseline fails even with the exception every baseline
+        # repository carries: a repository never goes back from absolute.
+        weaker = [w for w in weaker if w == "mode:baseline" or w not in excepted]
+    if weaker:
+        row(False, True, T("Login: check weaker than main"), str(len(weaker)), T("none without an exception"), "—")
+        hard.append("login check weaker than main")
+        details += [f"<details open><summary>{T('Login: check weaker than main')}</summary>", ""]
+        details += [f"- 🔴 `{w}`" for w in weaker] + ["", "</details>", ""]
+    if x.get("exceptions"):
+        row(True, True, T("Login: active exceptions"), str(len(x["exceptions"])), T("listed below"), "—")
+        details += [f"<details><summary>{T('Login: active exceptions')}</summary>", ""]
+        details += [f"- 🟡 `{e['hatch']}`: {e['reason']} ({e['approved_by']}, {e['date']})" for e in x["exceptions"]]
+        details += ["", "</details>", ""]
+    for note in x.get("notes") or []:
+        details += [f"> {note}", ""]
+    if x["errors"]:
+        row(False, True, T("Login: configuration"), str(len(x["errors"])), T("none"), "—")
+        hard.append("login configuration")
+        details += [f"<details open><summary>{T('Login: configuration')}</summary>", ""]
+        details += [f"- {e}" for e in x["errors"]] + ["", "</details>", ""]
+    before = set((bx or {}).get("baseline") or [])
+    grew = [i for i in x["tolerated"] if i["id"] not in before] if bx and bx.get("login") else []
+    for rule in sorted({f["rule"] for f in x["findings"] + x["tolerated"]} | ({"A3", "A4", "A5"} if x["checks"] else set())):
+        bad = [f for f in x["findings"] if f["rule"] == rule]
+        tol = [f for f in x["tolerated"] if f["rule"] == rule]
+        gr = [f for f in grew if f["rule"] == rule]
+        ok = not bad and not gr
+        now = str(len(bad)) + (" (" + T("{n} in the baseline").format(n=len(tol)) + ")" if tol else "")
+        row(ok, bool(tol), T(AUTH_LABELS.get(rule, rule)), now, T("none; baseline never grows"), "—")
+        if not ok:
+            hard.append(AUTH_LABELS.get(rule, rule))
+        if bad or tol:
+            details += [f"<details{' open' if bad else ''}><summary>{T(AUTH_LABELS.get(rule, rule))}</summary>", ""]
+            details += [f"- 🔴 `{f['where']}`: {f['msg']}" for f in bad]
+            details += [f"- 🔴 {T('new in the baseline')}: `{f['id']}`" for f in gr]
+            details += [f"- 🟡 `{f['where']}`: {f['msg']} ({T('baseline')})" for f in tol if f not in gr]
+            details += ["", "</details>", ""]
+    if not hard and x["login"]:
+        row(True, False, T("Login (policy A0-A7)"), T("all checked"), T("none failing"), "—")
+    return hard
+
+
 def obs_rows(o, bo, row, details):
     """Panel rows of the logs and request id checks. Returns the failures (all hard)."""
     hard = []
@@ -746,6 +812,13 @@ def compare(a):
         failed += hard + soft
         hard_failed += hard
 
+    login_hard = []
+    if "auth" in head and (head["auth"]["login"] or head["auth"].get("exceptions")
+                           or (base.get("auth") or {}).get("routes")):
+        hard = login_hard = auth_rows(head["auth"], base.get("auth"), row, details)
+        failed += hard
+        hard_failed += hard
+
     db_hard = []
     rule_hard = []  # other always-on rules (slo.json, logs)
     if "server_queries" in head:
@@ -810,7 +883,7 @@ def compare(a):
     if hard_failed and a.no_fail:
         site = {dict(CASE_METRICS)[k] for k in SITE_RULES} | {"site rules configuration"}
         unused = {dict(CASE_METRICS)["knip"], "knip configuration"}
-        rules = set(db_hard) | set(rule_hard)
+        rules = set(db_hard) | set(rule_hard) | set(login_hard)
         groups = [("Performance budget", [x for x in hard_failed if x not in site | unused | rules]),
                   ("Rule broken", [x for x in hard_failed if x in rules]),
                   ("Site rules", [x for x in hard_failed if x in site]),
@@ -851,6 +924,7 @@ def main():
     c.add_argument("--knip", help="knip --reporter json output")
     c.add_argument("--knip-mode", choices=["absolute", "baseline"], default="baseline")
     c.add_argument("--site-rules", help="site_rules.py check output")
+    c.add_argument("--auth", help="auth_check.py check output")
     c.add_argument("--observability", help="server_observability.py check output")
     c.add_argument("--slo", help="slo.py validate output")
     c.add_argument("--legacy", action="append", help="'dir:file' from modern-web-guidance legacy-scan --json")

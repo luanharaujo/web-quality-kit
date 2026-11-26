@@ -39,6 +39,7 @@ jobs:
           python3 tests/test_server_queries.py
           python3 tests/test_server_observability.py
           python3 tests/test_slo.py
+          python3 tests/test_auth.py
       # Every tool runs on a small bad site and each problem must show up.
       - name: Security tools (pinned, SHA-256 checked)
         run: |
@@ -98,6 +99,8 @@ jobs:
           lighthouse-runs: "1"
           bundle-dir: tests/cases/site
           data-guard: "true"
+          # The kit's own sources spell out the login patterns it looks for.
+          auth-config: "off"
           # The test site is bad on purpose and changes with the tests: this job
           # proves the action runs end to end, it does not gate the kit.
           fail-on-worse: "false"
