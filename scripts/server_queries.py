@@ -39,7 +39,10 @@ Config (server-queries.json, paths relative to the repository root):
   migrations      folder of .sql migrations (index check; empty = off)
   exempt_tables   {"plans": "reason"} small-by-nature tables
   pagination      {"param": "limit", "size": 10, "max": 50, "next_fields": [...],
-                  "items_field": "items", "exempt": {"GET /totals": "reason"}}
+                  "items_field": "items", "exempt": {"GET /totals": "reason"},
+                  "cache_buster": "_rows"} (cache_buster: extra query parameter
+                  on the cap calls so a response cache cannot answer with old
+                  rows; "" turns it off for an API that refuses unknown parameters)
                   (defaults shown; items_field default = items, data or results,
                   else the only list in the response; exempt = tested lists that do
                   not page by nature, such as a grouped summary, each with a reason)
@@ -226,7 +229,6 @@ def measure(cfg, root, tmp, server, routes):
                 errors.append(f"{r['route']}: no x-db-queries header (is the handler wrapped by withQueryCount, "
                               f"with DB_QUERY_HEADERS=1 in .dev.vars?)")
                 continue
-            h = calls[0]
             for extra in calls:
                 if extra.get("x-db-sql"):
                     sql.update(json.loads(base64.b64decode(extra["x-db-sql"]).decode()))
@@ -271,6 +273,7 @@ def paging(cfg, root, tmp, server, routes, headers_for):
     p = cfg.get("pagination", {})
     size, cap = int(p.get("size", 10)), int(p.get("max", 50))
     param = p.get("param", "limit")
+    buster = p.get("cache_buster", "_rows")
     fields = tuple(p.get("next_fields", NEXT_FIELDS))
     result = {}
     over = cap * 20  # a client asking for far more than the cap must still get at most the cap
@@ -285,9 +288,9 @@ def paging(cfg, root, tmp, server, routes, headers_for):
             path = r.get("path") or key.split(" ", 1)[1]
             url = server.base + (with_param(path, param, size) if step == "page"
                                  else with_param(path, param, over) if step == "over" else path)
-            if step != "page":
+            if step != "page" and buster:
                 # A new URL after the reseed, so a response cache cannot answer with the old rows.
-                url = with_param(url, "_rows", n)
+                url = with_param(url, buster, n)
             try:
                 _, _, data = get(url, {**headers, **r.get("headers", {})}, body=True)
                 items, nxt = page_of(data, r.get("items_field") or p.get("items_field"), fields)

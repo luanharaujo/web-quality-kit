@@ -72,8 +72,27 @@ function isIncomingRequest(node) {
       : ts.isPropertyAssignment(p.parent) ? p.parent.name
       : ts.isFunctionDeclaration(p) ? p.name : null
     if (!owner || owner.getText() !== 'fetch' || p.parameters.length < 2) return false
-    const obj = ts.isMethodDeclaration(p) || ts.isPropertyAssignment(p.parent) ? (ts.isMethodDeclaration(p) ? p.parent : p.parent.parent) : null
-    return !!obj && ts.isObjectLiteralExpression(obj) && !!obj.parent && ts.isExportAssignment(obj.parent)
+    const obj = ts.isMethodDeclaration(p) ? p.parent : ts.isPropertyAssignment(p.parent) ? p.parent.parent : null
+    return !!obj && ts.isObjectLiteralExpression(obj) && isDefaultExport(obj)
+  }
+  return false
+}
+
+// The object is what `export default` exports, through `satisfies`, `as`,
+// parentheses, or a variable exported by name (const worker = {...}; export default worker).
+const unwrap = (n) => {
+  while (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression?.(n) || ts.isTypeAssertionExpression(n))) n = n.expression
+  return n
+}
+function isDefaultExport(obj) {
+  let n = obj
+  while (n.parent && (ts.isParenthesizedExpression(n.parent) || ts.isAsExpression(n.parent) ||
+         ts.isSatisfiesExpression?.(n.parent) || ts.isTypeAssertionExpression(n.parent))) n = n.parent
+  if (n.parent && ts.isExportAssignment(n.parent) && !n.parent.isExportEquals) return true
+  if (n.parent && ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) {
+    const name = n.parent.name.text
+    return n.getSourceFile().statements.some((st) => ts.isExportAssignment(st) && !st.isExportEquals &&
+      ts.isIdentifier(unwrap(st.expression)) && unwrap(st.expression).text === name)
   }
   return false
 }
@@ -95,7 +114,11 @@ function signalOf(opts) {
   for (const p of opts.properties) {
     if (ts.isSpreadAssignment(p)) { sig = 'unknown'; continue }
     const name = p.name && p.name.getText()
-    if (name === 'signal') sig = ts.isPropertyAssignment(p) ? p.initializer : 'unknown'
+    if (name !== 'signal') continue
+    const v = ts.isPropertyAssignment(p) ? p.initializer : null
+    // signal: undefined / null sets no time limit.
+    if (v && (v.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(v) && v.text === 'undefined'))) sig = null
+    else sig = v || 'unknown'
   }
   return sig
 }
