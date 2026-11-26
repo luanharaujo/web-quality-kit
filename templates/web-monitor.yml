@@ -4,6 +4,10 @@
 # Once a week: Lighthouse on the live site (phone, slow network) and, if a prober
 # keeps a log, availability. The run fails, and GitHub emails the owner, only when
 # a goal in web-budget.json "slo" is at risk or missed.
+#
+# History: each run reads the last run's `web-monitor-history` artifact. If the
+# last runs kept none (for example the very first runs failed before measuring),
+# the run stops; check why, then run it once by hand with start-history.
 name: Web monitor
 
 on:
@@ -41,4 +45,7 @@ jobs:
           base-url: https://example.org
           paths: /
           start-history: ${{ inputs.start-history || false }}
-          # probes-file: probes.csv   # "ISO time,1|0" per line, from your prober
+          # Availability: the prober's log must be in the runner. Add a step before
+          # this one that fetches it (it is not in the repo, so the checkout above
+          # does not bring it), then:
+          # probes-file: probes.csv   # "ISO time,1|0" per line

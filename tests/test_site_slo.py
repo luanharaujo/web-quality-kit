@@ -18,6 +18,7 @@ import budget  # noqa: E402
 MOBILE = {"formFactor": "mobile", "screenEmulation": {"mobile": True}, "throttlingMethod": "simulate",
           "throttling": {"rttMs": 150, "throughputKbps": 1638.4, "cpuSlowdownMultiplier": 4}}
 FAILS = []
+LAST = {}
 
 
 def expect(name, ok, detail=""):
@@ -47,6 +48,7 @@ def lab(lcps, history=(), page="/", settings=MOBILE, today="2026-11-26", slo=Non
     r = subprocess.run([sys.executable, SLO, "lab", d, "--history", hist, "--config", config(slo), "--today", today, "--pages", pages,
                         "--base-url", site],
                        capture_output=True, text=True)
+    LAST["err"] = r.stderr
     return r.returncode, r.stdout, [json.loads(ln) for ln in open(hist) if ln.strip()]
 
 
@@ -89,8 +91,12 @@ expect("lab: a stricter goal from web-budget.json is used", rc == 1 and "≤ 2.0
 rc, out, _ = lab([1800], settings=dict(MOBILE, formFactor="desktop"))
 expect("lab: a desktop run is refused", rc == 1 and "phone" in out, out)
 
-rc, out, _ = lab([1800], pages="/ /contact/")
-expect("lab: a page Lighthouse did not measure fails (no green without a number)", rc == 1 and "/contact/" in out, out)
+rc, out, hist = lab([1800], pages="/ /contact/")
+expect("lab: a page Lighthouse did not measure fails (no green without a number)",
+       rc == 1 and "🔴 not measured | `/contact/`" in out, out)
+expect("lab: the pages measured that week still go into the history", [h["page"] for h in hist] == ["/"], hist)
+expect("lab: a missing page is not reported as LCP over the goal",
+       "not measured" in LAST["err"] and "over the goal" not in LAST["err"], LAST["err"])
 rc, out, _ = lab([1800], pages="/")
 expect("lab: every expected page measured is ok", rc == 0, out)
 rc, out, hist = lab([1800], site="https://x.github.io/repo", pages="/")
@@ -134,6 +140,14 @@ r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "-
                    capture_output=True, text=True)
 expect("probe: a new prober is a partial window (yellow, does not fail)",
        r.returncode == 0 and "🟡 partial window" in r.stdout and "new prober" in r.stdout, r.stdout)
+r = subprocess.run([sys.executable, SLO, "probe", "/nonexistent/probes.csv", "--config", config(),
+                    "--now", "2026-11-26T12:00:00+00:00"], capture_output=True, text=True)
+expect("probe: a missing log is a clear red line, not a traceback",
+       r.returncode == 1 and "not found" in r.stdout and "Traceback" not in r.stderr, r.stdout + r.stderr)
+open(path, "w").writelines(f"2026-11-26T{h:02d}:00:00Z,1\n" for h in range(12))
+r = subprocess.run([sys.executable, SLO, "probe", path, "--config", config(), "--now", "2026-11-26T12:00:00+00:00"],
+                   capture_output=True, text=True)
+expect("probe: times ending in Z are read", "| 12 |" in r.stdout and "warning" not in r.stderr, r.stdout + r.stderr)
 rc, out, err = probe(0, extra="not a line\n")
 expect("probe: a bad line is a warning, not a crash", rc == 0 and "not 'ISO time,1|0'" in err, err)
 rc, out, _ = probe(0, extra="2026-10-01T00:00:00+00:00,0\n" * 50)

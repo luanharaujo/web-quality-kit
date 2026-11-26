@@ -78,9 +78,9 @@ def lab(a):
         if v is not None:
             week.setdefault(page, []).append(float(v))
     missing = [p for p in a.pages.split() if norm(p) not in week]
-    if not week or missing:
+    if not week:
         print("## SLO\n\n🔴 no Lighthouse result from the live site for: " + (", ".join(missing) or "any page"))
-        print("::error::SLO unknown: a page was not measured (Lighthouse failed on it)", file=sys.stderr)
+        print("::error::SLO unknown: no page was measured (Lighthouse failed)", file=sys.stderr)
         return 1
     history = []
     if a.history and os.path.exists(a.history):
@@ -109,11 +109,16 @@ def lab(a):
         rows.append(f"| {state} | `{page}` | {now / 1000:.2f} s | {win / 1000:.2f} s ({len(window)} week{'s' if len(window) != 1 else ''}) | ≤ {goal / 1000:.2f} s |")
     print(f"## SLO: LCP p75 on the live site ({slo['window_days']} days)\n")
     print("| | Page | This week | Window | Goal |\n|---|---|---|---|---|")
+    # Pages measured this week stay in the history; a page without a result
+    # is red: no green without a number.
+    for page in missing:
+        rows.append(f"| 🔴 not measured | `{page}` | no result | | |")
+        print(f"::error::SLO unknown: {page} was not measured (Lighthouse failed on it)", file=sys.stderr)
     print("\n".join(rows))
     print("\nLab numbers: phone on a slow network (Lighthouse mobile, Slow 4G, 4x CPU), p75 of the runs.")
     if bad:
         print("::error::SLO at risk or missed: LCP p75 over the goal on the live site", file=sys.stderr)
-    return 1 if bad else 0
+    return 1 if bad or missing else 0
 
 
 def probe(a):
@@ -129,13 +134,17 @@ def probe(a):
     samples, times = [], []
     last = start
     older = False   # lines before the window: the prober is not new
+    if not os.path.isfile(a.csv):
+        print(f"## SLO\n\n🔴 prober log {a.csv} not found: fetch it into the job before this step")
+        print(f"::error::SLO unknown: prober log {a.csv} not found", file=sys.stderr)
+        return 1
     for n, ln in enumerate(open(a.csv), 1):
         ln = ln.strip()
         if not ln or ln.startswith("#"):
             continue
         try:
             t, ok = ln.split(",")[:2]
-            when = datetime.datetime.fromisoformat(t.strip())
+            when = datetime.datetime.fromisoformat(re.sub(r"Z$", "+00:00", t.strip()))
             if when.tzinfo is None:
                 when = when.replace(tzinfo=datetime.timezone.utc)
             up = ok.strip() == "1"
