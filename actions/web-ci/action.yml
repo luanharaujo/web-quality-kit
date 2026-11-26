@@ -84,6 +84,20 @@ inputs:
       a warning for queries inside a loop. The app wraps env.DB with the kit's
       templates/server/d1_queries.ts. Empty = off.
     default: ""
+  observability:
+    description: >
+      The repository's observability.json: logs and request ids of the server
+      (every route answers with x-request-id, keeps a valid one from the caller,
+      one JSON log line per request with that id, no personal data in the
+      lines, no console.* outside the log helper). The app wraps its fetch
+      handler with the kit's templates/server/observe.ts. Empty = off.
+    default: ""
+  slo:
+    description: >
+      The server's slo.json: availability and p95 latency targets and the alert
+      limits (templates/slo.json), validated by the kit. The alert on the error
+      budget reads the same file. Empty = off.
+    default: ""
   data-guard:
     description: '"true" = personal data and secrets check (meant for public repositories).'
     default: "false"
@@ -136,6 +150,8 @@ runs:
         TEST_COMMAND: ${{ inputs.test-command }}
         DATA_GUARD: ${{ inputs.data-guard }}
         SERVER_QUERIES: ${{ inputs.server-queries }}
+        OBSERVABILITY: ${{ inputs.observability }}
+        SLO: ${{ inputs.slo }}
         MODERN: ${{ inputs.modern }}
       run: '"$KIT/scripts/web_ci.sh"'
 

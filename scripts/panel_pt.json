@@ -77,5 +77,13 @@
  "main measured it": "a main mediu",
  "Site rules: note": "Regras do site: aviso",
  "{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: add \"{folder}\" to \"cache\": {{\"hashed_dirs\": [...]}} so its cache is checked": "{folder} parece saída de build ({hits} de {total} nomes com hash), mas não está declarada: ponha \"{folder}\" em \"cache\": {{\"hashed_dirs\": [...]}} para conferir o cache dela",
- "read checks in warning mode (loading state, duplicate reads, search debounce): only warn for now": "verificações de leitura em modo aviso (carregando, leitura duplicada, debounce da busca): por enquanto só avisam"
+ "read checks in warning mode (loading state, duplicate reads, search debounce): only warn for now": "verificações de leitura em modo aviso (carregando, leitura duplicada, debounce da busca): por enquanto só avisam",
+ "Logs check: configuration": "Logs: configuração da checagem",
+ "Request id and JSON log per request": "Código do pedido e log JSON por pedido",
+ "console.* outside the log helper": "console.* fora do registro de log",
+ "routes": "rotas",
+ "{n} log problems": "{n} problemas no log",
+ "every route and every line": "toda rota e toda linha",
+ "Service level objective (slo.json)": "Meta de serviço (slo.json)",
+ "a valid target": "meta válida"
 }

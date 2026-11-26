@@ -1,0 +1,33 @@
+{
+  "mode": "absolute",
+  "helper": "tests/cases/observability/app/observe.ts",
+  "server": {
+    "start": "node tests/cases/observability/server.mjs good {port}",
+    "url": "http://127.0.0.1:{port}",
+    "ready": "/health",
+    "timeout": 30
+  },
+  "routes": [
+    {
+      "route": "GET /health"
+    },
+    {
+      "route": "GET /orders"
+    },
+    {
+      "route": "GET /orders/:id",
+      "path": "/orders/1"
+    },
+    {
+      "route": "POST /orders",
+      "path": "/orders",
+      "body": {
+        "total": 5,
+        "email": "ana@example.com"
+      }
+    }
+  ],
+  "source": [
+    "tests/cases/observability/handlers_good.mjs"
+  ]
+}
