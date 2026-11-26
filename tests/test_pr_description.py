@@ -7,6 +7,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -175,7 +176,8 @@ srv.shutdown()
 tpl = open(os.path.join(ROOT, "templates", "pr-description.yml")).read()
 check("template: job is named pr-descricao", "\n  pr-descricao:" in tpl)
 check("template: never pull_request_target", "pull_request_target:" not in tpl and "pull_request:" in tpl)
-check("template: events", "[opened, edited, synchronize, reopened, ready_for_review]" in tpl)
+check("template: events", "[opened, edited, synchronize, reopened]" in tpl)
+check("template: ready_for_review does not rerun the checks", not re.search(r"^[^#\n]*ready_for_review", tpl, re.M))
 check("template: least permissions", "contents: read" in tpl and "pull-requests: write" in tpl and tpl.count("write") == 1)
 check("template: runner from CI_RUNNER, Dependabot on ubuntu-latest", "fromJSON(vars.CI_RUNNER || '\"ubuntu-latest\"')" in tpl and "dependabot[bot]" in tpl)
 act = open(os.path.join(ROOT, "actions", "pr-description", "action.yml")).read()
