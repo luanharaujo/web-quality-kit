@@ -156,7 +156,7 @@ def action(files, **env):
     e = dict(os.environ, PATH=os.path.join(tmp, "bin") + os.pathsep + os.environ["PATH"], GH_LOG=log,
              KIT=os.path.join(HERE, ".."), GITHUB_WORKSPACE=d, RUNNER_TEMP=tmp, GITHUB_REPOSITORY="o/r",
              GITHUB_STEP_SUMMARY=os.path.join(tmp, "summary"), LANG_PR="pt", INDEX=idx,
-             **{"GITHUB_REF_NAME": "main", **env})
+             **{"GITHUB_REF_NAME": "main", "APP_SLUG": "example-node-update", "REFUSED": "example-admin-app", **env})
     r = subprocess.run(["bash", "-eo", "pipefail", "-c", RUN], capture_output=True, text=True, env=e)
     calls = open(log).read().splitlines() if os.path.exists(log) else []
     return r, calls
@@ -184,6 +184,15 @@ expect("action: a branch without any PR (interrupted run) is made again",
 r, calls = action({".nvmrc": "22.20.0\n"}, GH_PUT_FAILS="1")
 expect("action: a failed commit deletes the branch (no orphan 'already proposed')",
        r.returncode != 0 and any(c.startswith("api -X DELETE") and "kit/node-22.21.1" in c for c in calls), (r.stderr, calls))
+r, calls = action({".nvmrc": "22.20.0\n"}, APP_SLUG="example-admin-app")
+expect("action: refuses an App listed in refused-apps, before any call", r.returncode != 0
+       and "refused-apps" in r.stdout and not calls, (r.stdout, calls))
+r, calls = action({".nvmrc": "22.20.0\n"}, APP_SLUG="example-admin-app", REFUSED="other-app,example-admin-app")
+expect("action: a comma-separated list is read too", r.returncode != 0 and not calls, (r.stdout, calls))
+r, calls = action({".nvmrc": "22.20.0\n"}, REFUSED="")
+expect("action: refuses to run without refused-apps", r.returncode != 0 and not calls, (r.stdout, calls))
+r, calls = action({".nvmrc": "22.20.0\n"}, APP_SLUG="")
+expect("action: refuses to run without the App slug", r.returncode != 0 and not calls, (r.stdout, calls))
 r, calls = action({".nvmrc": "22.20.0\n"}, GITHUB_REF_NAME="feature")
 expect("action: refuses to run off the default branch", r.returncode != 0 and not any("refs -f" in c for c in calls),
        (r.stdout, calls))
