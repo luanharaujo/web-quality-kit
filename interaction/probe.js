@@ -109,18 +109,25 @@
   document.addEventListener('pointerdown', (e) => activate(e.target), true);
   document.addEventListener('click', (e) => activate(e.target), true);
   document.addEventListener('submit', (e) => activate(e.submitter || e.target), true);
-  // Enter or space on a control is a tap; in a text field it is typing (a
-  // form's Enter still arrives as its submit).
+  // Enter or space on a control is a tap. In a text field space is typing,
+  // and Enter is a tap (send in a chat, add an item) unless it is Shift+Enter
+  // or part of an IME composition.
   const NOT_TEXT = /^(button|submit|reset|checkbox|radio|file|image|color|range)$/i;
   const typing = (el) => el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !NOT_TEXT.test(el.type || '')));
-  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !typing(e.target)) activate(e.target); }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) activate(e.target);
+    else if (e.key === ' ' && !typing(e.target)) activate(e.target);
+  }, true);
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t && t.type === 'file') { activate(t); k.files = t.files ? t.files.length : 0; }
   }, true);
   // A typed or chosen value starts a new action for the read checks only
   // (a filter A, then B, then A again is three actions).
-  const newAction = (e) => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(e.type); };
+  // A checkbox, radio, switch or select tapped sends input and change right
+  // after its click: "control" tells the kit they are part of that tap.
+  const newAction = (e) => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(typing(e.target) ? e.type : 'control'); };
   document.addEventListener('input', newAction, true);
   document.addEventListener('change', newAction, true);
   document.addEventListener('drop', (e) => {

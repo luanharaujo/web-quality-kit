@@ -121,8 +121,8 @@ export class Reads {
       this.newAction();
       if (kind === 'tap') {
         this.actionAt = Date.now();
-      } else if (kind === 'change' && Date.now() - this.actionAt < 500) {
-        return; // the "change" a tap causes by taking the focus from a field
+      } else if ((kind === 'change' || kind === 'control') && Date.now() - this.actionAt < 500) {
+        return; // part of the tap: a field's change on blur, a checkbox's input and change
       } else {
         this.actionAt = 0;
       }
@@ -202,7 +202,7 @@ export class Reads {
       how = (await evaluate(page, ([t, w]) => (window.__kit ? window.__kit.loadingSince(t, w) : ''), [left, cfg.busyWithinMs])) || '';
       // The test ended and closed the page: nothing to judge, and another
       // test may check this route.
-      if (!how && page.isClosed()) { this.o.unclaim('read', key); return; }
+      if (!how && page.isClosed()) { this.o.unclaim('read', key); this.o.note(key, 'loading-state', 'not judged: the page closed before the check ended'); return; }
       // Keep looking a little longer when the page is slow to answer us.
       if (how || Date.now() - left > cfg.busyWithinMs + 1000) break;
       await sleep(40);
@@ -250,7 +250,11 @@ export class Reads {
       const { count, key, gap } = this.typing;
       this.typing = null;
       if (!count) continue; // filters locally: nothing to debounce
-      if (gap > MAX_KEY_GAP_MS) { this.o.unclaim('debounce', where); continue; } // typing too slow to judge: another test may
+      if (gap > MAX_KEY_GAP_MS) { // typing too slow to judge: another test may
+        this.o.unclaim('debounce', where);
+        this.o.note(key, 'debounce', `not judged: the keys reached the page up to ${Math.round(gap)} ms apart (limit ${MAX_KEY_GAP_MS})`);
+        continue;
+      }
       if (this.skipped(key)) continue;
       if (count > 2) this.problem(key, 'debounce', `typing "${WORD}" in the search field "${name}" sent ${count} reads (limit 2): wait for a pause in the typing before searching`);
       else this.o.pass(key, 'debounce', `${count} read(s) for ${WORD.length} letters`);

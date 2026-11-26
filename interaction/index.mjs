@@ -182,6 +182,11 @@ class Interaction {
 
   // A problem that does not fail yet (checks being rolled out): the panel
   // lists it, the test and the gate do not fail.
+  // A check that could not judge: kept in the report, never counted.
+  note(key, check, message) {
+    report({ type: 'note', route: key, check, message, test: this.testInfo.titlePath.join(' > ') });
+  }
+
   warn(key, check, message) {
     report({ type: 'warning', route: key, check, ok: false, message, test: this.testInfo.titlePath.join(' > ') });
   }

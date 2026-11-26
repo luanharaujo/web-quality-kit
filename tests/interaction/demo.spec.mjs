@@ -43,6 +43,20 @@ test('list list-mocked (slow route handler in the test)', async ({ page }) => {
   await expect(page.getByText('Partner balance')).toBeVisible({ timeout: ciTimeout(8000) });
 });
 
+test('booking good-enter (Enter in the field, no form submit)', async ({ page }) => {
+  await page.goto('/booking.html?v=good-enter');
+  await page.getByLabel('Name').fill('Test User');
+  await page.getByLabel('Name').press('Enter');
+  await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {});
+});
+
+test('booking good-check (a ticked box, slow reads, then the write)', async ({ page }) => {
+  await page.goto('/booking.html?v=good-check');
+  await page.getByLabel('Name').fill('Test User');
+  await page.getByLabel('Book this slot').check();
+  await expect(page.getByRole('status')).toHaveText(/booked/i, { timeout: 8000 }).catch(() => {});
+});
+
 // Typing starts a read; the draft saved later, with no tap, is not a tap's write.
 test('booking good-typed (autosave after typing)', async ({ page }) => {
   await page.goto('/booking.html?v=good-typed');
@@ -63,7 +77,9 @@ test('list list-closed (page closed during the check)', async ({ page }) => {
     await new Promise((r) => setTimeout(r, 1500));
     await route.fulfill({ json: [] }).catch(() => {});
   });
+  const asked = page.waitForRequest('**/api/list-closed/items*');
   await page.goto('/list.html?v=list-closed', { waitUntil: 'commit' });
+  await asked; // the read is out and being watched
   await page.close();
 });
 
