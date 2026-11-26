@@ -22,6 +22,13 @@ class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def translate_path(self, path):
+        # Clean URLs, like static hosts: /about serves about.html.
+        full = super().translate_path(path)
+        if not os.path.splitext(full)[1] and not os.path.exists(full) and os.path.isfile(full + ".html"):
+            return full + ".html"
+        return full
+
     def do_GET(self):
         path = self.path.split("?")[0]
         if path in self.flaky:
@@ -164,6 +171,18 @@ def main():
             assert "assets/ looks like build output" in r.stdout and "not declared" in r.stderr, r.stdout + r.stderr
         finally:
             server2.shutdown()
+        # A clean URL (/about served by about.html) is compared and its cache asked.
+        clean = {"about.html": "<h1>about</h1>"}
+        write(live, clean)
+        write(published, clean)
+        Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/about": "public, max-age=31536000",
+                       "/": "public, max-age=0, must-revalidate"}
+        r = run(base, published, "/about", "/", "--cache")
+        assert r.returncode == 1 and "| `/about` | 200, same as published" in r.stdout \
+            and "2 pages" in r.stdout and "page cached too long" in r.stdout, r.stdout + r.stderr
+        # A path that is not a page is named as not checked, never counted.
+        r = run(base, published, "/", "/adm/versao.json", "--cache")
+        assert "1 pages" in r.stdout and "not HTML pages" in r.stdout and "`/adm/versao.json`" in r.stdout, r.stdout
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr

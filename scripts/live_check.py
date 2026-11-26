@@ -33,10 +33,17 @@ import site_rules  # noqa: E402
 
 
 def local_file(site_dir, path):
-    rel = path.lstrip("/")
+    """The published file behind a page address, clean URLs included
+    (/about serves about.html or about/index.html, as static hosts do)."""
+    rel = path.split("?")[0].lstrip("/")
     if rel == "" or rel.endswith("/"):
-        rel += "index.html"
-    return os.path.join(site_dir, rel)
+        return os.path.join(site_dir, rel + "index.html")
+    full = os.path.join(site_dir, rel)
+    if not os.path.splitext(rel)[1] and not os.path.isfile(full):
+        for alt in (rel + ".html", rel + "/index.html"):
+            if os.path.isfile(os.path.join(site_dir, alt)):
+                return os.path.join(site_dir, alt)
+    return full
 
 
 def fetch(url, timeout=20, with_headers=False):
@@ -93,7 +100,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
             rel = os.path.relpath(os.path.join(root, n), site_dir).replace(os.sep, "/")
             if site_rules.is_hashed(rel, extra, hashed_dirs) and not budget.rule_exception("cache-hashed", rel, exceptions):
                 hashed.append("/" + rel)
-    out = []
+    out, pages = [], []
 
     def url(path):
         return base.rstrip("/") + urllib.parse.quote(path, safe="/?=&%")
@@ -103,6 +110,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
         rel = os.path.relpath(local, site_dir).replace(os.sep, "/")
         if not local.endswith(".html") or budget.rule_exception("cache-html", rel, exceptions):
             continue
+        pages.append(path)
         status, _, h = fetch_steady(url(path), tries, wait)
         cc = h.get("cache-control", "")
         age = site_rules.max_age(cc, shared=True)
@@ -118,7 +126,7 @@ def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rul
             out.append((path, f"HTTP {status}"))
         elif (site_rules.max_age(cc) or 0) < site_rules.YEAR or "immutable" not in cc.lower():
             out.append((path, f"Cache-Control '{cc or 'none'}' (needs max-age={site_rules.YEAR}, immutable)"))
-    return out, len(chosen)
+    return out, len(chosen), pages
 
 
 def check(base, path, site_dir, salt):
@@ -182,10 +190,14 @@ def main():
             print(f"::error::{a.config}: {e}", file=sys.stderr)
         return 2
     if a.cache:
-        problems, n = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
+        problems, n, checked = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
                                      site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
                                      wait=min(a.wait, 5))
-        print(f"\n## Live cache (Cache-Control)\n\n{len(paths)} pages, {n} hashed files checked.\n")
+        print(f"\n## Live cache (Cache-Control)\n\n{len(checked)} pages, {n} hashed files checked.\n")
+        skipped = [p for p in paths if p not in checked]
+        if skipped:
+            print(f"🟡 not HTML pages (or with a cache-html exception), cache not checked: "
+                  f"{', '.join(f'`{p}`' for p in skipped)}\n")
         if not os.path.exists(a.config):
             print(f"🟡 {a.config} not found (no checkout in this job?): only the kit's build folders count as hashed.\n")
         files = [os.path.relpath(os.path.join(r, f), a.site_dir) for r, _, fs in os.walk(a.site_dir) for f in fs]

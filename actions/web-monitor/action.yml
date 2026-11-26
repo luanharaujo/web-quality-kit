@@ -53,7 +53,8 @@ runs:
         # A week at risk fails the job, so look at completed runs, not only green
         # ones. A history that cannot be read must stop the run: starting over
         # would empty the window and turn "breached" into "ok".
-        if ! runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --status completed --limit 5 \
+        # Same branch only: a manual run on another branch keeps its own history.
+        if ! runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$file" --branch "$GITHUB_REF_NAME" --status completed --limit 5 \
                      --json databaseId -q '.[].databaseId' 2>"$RUNNER_TEMP/web-monitor/gh.err"); then
           echo "::error::Could not list this workflow's runs (needs permissions: actions: read)"
           cat "$RUNNER_TEMP/web-monitor/gh.err"; exit 1
@@ -90,7 +91,9 @@ runs:
         # pages after it must still be measured (a missing page fails below).
         for p in $PATHS; do
           rm -rf .lighthouseci
-          "$KIT/tools/node_modules/.bin/lhci" collect --url "${BASE_URL%/}$p" -n "$RUNS" \
+          # --no-lighthouserc: a repo's rc is for its build CI (static dir, server
+          # command); here the live site is measured with the kit's settings only.
+          "$KIT/tools/node_modules/.bin/lhci" collect --no-lighthouserc --url "${BASE_URL%/}$p" -n "$RUNS" \
             --settings.chromeFlags="--headless=new --no-sandbox --disable-dev-shm-usage" \
             --settings.formFactor=mobile --settings.throttlingMethod=simulate >> "$RUNNER_TEMP/web-monitor/lhci.log" 2>&1 \
             || { echo "::warning::Lighthouse did not finish on $p"; tail -20 "$RUNNER_TEMP/web-monitor/lhci.log"; }
