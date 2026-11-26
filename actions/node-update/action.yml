@@ -14,7 +14,20 @@ description: Pull request with the newest Node.js patch/minor of the pinned LTS 
 
 inputs:
   token:
-    description: GitHub App token with contents and pull-requests write.
+    description: >
+      Token of a GitHub App made only for this: contents and pull-requests write,
+      not in any ruleset bypass list.
+    required: true
+  app-slug:
+    description: >
+      Slug of the App behind the token (actions/create-github-app-token output
+      app-slug). The run refuses an App listed in refused-apps.
+    required: true
+  refused-apps:
+    description: >
+      Slugs of the Apps that must never open these PRs (any App that may bypass
+      the main branch rules), space separated. Required: set it from a repo or
+      organization variable so a wrong App key is caught before any call.
     required: true
   lang:
     description: Language of the PR text (pt for private repos, en for public).
@@ -31,9 +44,20 @@ runs:
       env:
         KIT: ${{ github.action_path }}/../..
         GH_TOKEN: ${{ inputs.token }}
+        APP_SLUG: ${{ inputs.app-slug }}
+        REFUSED: ${{ inputs.refused-apps }}
         LANG_PR: ${{ inputs.lang }}
         INDEX: ${{ inputs.index-url }}
       run: |
+        if [[ -z "$APP_SLUG" || -z "${REFUSED// /}" ]]; then
+          echo "::error::app-slug and refused-apps are required (see templates/node-update.yml)"; exit 1
+        fi
+        for refused in ${REFUSED//,/ }; do   # spaces or commas
+          if [[ "$APP_SLUG" == "$refused" ]]; then
+            echo "::error::$APP_SLUG is in refused-apps: use an App made only for Node updates (contents and pull-requests write, no ruleset bypass), and remove this App's key from the repo secrets."
+            exit 1
+          fi
+        done
         work="$RUNNER_TEMP/node-update"
         rm -rf "$work" && mkdir -p "$work"
         python3 "$KIT/scripts/node_update.py" plan "$GITHUB_WORKSPACE" --index "$INDEX" > "$work/plan.json"

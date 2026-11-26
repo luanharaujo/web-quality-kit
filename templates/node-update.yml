@@ -5,6 +5,11 @@
 # package.json engines has a newer patch or minor, a pull request moves the pin.
 # The PR is opened by a GitHub App, so the repo's CI runs on it like on any PR;
 # merging is the owner's call. A new major is never proposed, only reported.
+#
+# Which App: a separate one made only for this, with contents and pull-requests
+# write and nothing else, and NOT in any ruleset bypass list. Never reuse an App
+# that can bypass the main branch rules: its key in a repo secret would let a
+# workflow merge into main without review.
 name: Node update
 
 on:
@@ -37,4 +42,8 @@ jobs:
       - uses: luanharaujo/web-quality-kit/actions/node-update@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit
         with:
           token: ${{ steps.token.outputs.token }}
+          app-slug: ${{ steps.token.outputs.app-slug }}
+          # Slugs of every App that may bypass the main rules (space separated):
+          # the run stops if the key above belongs to one of them.
+          refused-apps: ${{ vars.NODE_UPDATE_REFUSED_APPS }}
           lang: pt    # en for a public repo
