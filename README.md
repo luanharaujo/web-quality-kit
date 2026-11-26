@@ -153,7 +153,8 @@ Copy `templates/node-update.yml`. Once a week it reads nodejs.org's own release 
 - Never a new major: a newer LTS is only reported in the PR and in the run. Moving to it is a decision.
 - A major alone (`22`), an alias (`lts/*`) or a range (`>=20`) already floats: nothing changes.
 - The PR is opened by a GitHub App (its token is the `token` input), so the repo's CI runs on it, and its commits are made through the API, signed by GitHub. A PR opened with the default `GITHUB_TOKEN` would not run CI.
-- One PR per version (`kit/node-X.Y.Z`). Closing it and keeping the branch means "no" for that version; a failed run deletes the branch it made.
+- One PR per version (`kit/node-X.Y.Z`), branched from the commit it read, so it never undoes newer work on main. A newer version closes the open PR of an older one. Closing a PR and keeping its branch means "no" for that version; a failed run deletes the branch it made.
+- Only pins of the line the repo runs on change: an `engines` pin of another major (`^18.17.0` next to `.nvmrc` 22) is left alone.
 - The repo's CI tests the new version only if it reads the version file (`actions/setup-node` with `node-version-file: .nvmrc`), not a fixed `node-version`.
 - Merging is the owner's call, like any PR.
 

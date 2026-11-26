@@ -2,7 +2,8 @@
 # newer patch or minor (nodejs.org's own release list; no Renovate). Only
 # exact pins in .node-version, .nvmrc and package.json "engines.node" change,
 # never the major. One PR per target version; if its branch exists (a PR is
-# open, or the owner closed it and kept the branch to say no), nothing.
+# open, or the owner closed it and kept the branch to say no), nothing. A new
+# version closes the open PR of an older one.
 #
 # Commits go through the GitHub API with the given token, so they are signed
 # by GitHub as that App. Use a GitHub App token (actions/create-github-app-token):
@@ -53,7 +54,10 @@ runs:
         if [[ "$GITHUB_REF_NAME" != "$base" ]]; then
           echo "::error::Run this on $base: the new files are made from the checked-out branch ($GITHUB_REF_NAME)."; exit 1
         fi
-        sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$base" -q .object.sha)
+        # The branch starts at the commit the files were read from, so the PR
+        # can never undo what landed on the base in between (it would show as
+        # a conflict instead).
+        sha=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
         gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$branch" -f sha="$sha" >/dev/null
         # From here a failure must not leave a branch without a PR (it would
         # read as "already proposed" every week after).
@@ -66,3 +70,10 @@ runs:
         done < "$work/paths"
         url=$(gh pr create -R "$GITHUB_REPOSITORY" --base "$base" --head "$branch" --title "$title" --body-file "$work/pr.md")
         echo "Node $target: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+        trap - ERR
+        # Older proposals are replaced by this one.
+        gh pr list -R "$GITHUB_REPOSITORY" --state open --json number,headRefName \
+          -q ".[] | select(.headRefName | startswith(\"kit/node-\")) | select(.headRefName != \"$branch\") | .number" |
+        while read -r old; do
+          gh pr close "$old" -R "$GITHUB_REPOSITORY" --delete-branch --comment "Replaced by $url (Node $target)." || true
+        done

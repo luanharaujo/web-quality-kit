@@ -68,6 +68,8 @@ expect("package.json: only engines.node changes, bytes otherwise the same",
        open(os.path.join(d, "package.json")).read())
 expect("after apply, no pin needs a change", plan(d)["files"] == [], plan(d))
 
+p = plan(repo({".nvmrc": "22.20.0\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
+expect("a pin of another major (engines ^18) is left alone", [f["path"] for f in p["files"]] == [".nvmrc"], p)
 p = plan(repo({".nvmrc": "22\n"}))
 expect("a major alone already floats: nothing changes", p["files"] == [] and p["current"] is None, p)
 p = plan(repo({".nvmrc": "lts/*\n"}))
@@ -85,6 +87,19 @@ expect("from before the line became LTS, to its newest LTS", p["target"] == "22.
 p = plan(repo({}))
 expect("no pin: nothing changes", p == {"current": None, "target": None, "security": False, "newer_lts": None, "files": []}, p)
 
+# --- the PR text passes the kit's own description check, in both languages
+LINT = os.path.join(HERE, "..", "scripts", "pr_lint.py")
+pf = os.path.join(tempfile.mkdtemp(), "plan.json")
+json.dump({"current": "22.20.0", "target": "22.21.1", "security": True, "newer_lts": "24.11.1",
+           "files": [{"path": ".nvmrc", "old": "22.20.0", "new": "22.21.1", "kind": "file"}]}, open(pf, "w"))
+for lang, vis in (("pt", "private"), ("en", "public")):
+    text = subprocess.run([sys.executable, SCRIPT, "body", pf, "--lang", lang], capture_output=True, text=True).stdout
+    bf = os.path.join(tempfile.mkdtemp(), "body.md")
+    open(bf, "w").write(text.split("\n", 1)[1])
+    r = subprocess.run([sys.executable, LINT, "--body-file", bf, "--visibility", vis], capture_output=True, text=True)
+    expect(f"PR text ({lang}) passes the description check", r.returncode == 0 and text.startswith("Node 22.20.0"),
+           r.stdout + r.stderr)
+
 # --- the action's shell, with a fake gh that logs every call ---------------------
 ACTION = os.path.join(HERE, "..", "actions", "node-update", "action.yml")
 lines = open(ACTION).read().split("\n")
@@ -97,6 +112,8 @@ case "$*" in
   "api repos/o/r -q .default_branch") echo main;;
   "api repos/o/r/git/ref/heads/main -q .object.sha") echo abc123;;
   "api repos/o/r/git/refs -f"*) echo '{}';;
+  "pr list"*) echo 7;;
+  "pr close"*) echo closed;;
   "api repos/o/r/contents/"*"?ref="*) echo blobsha;;
   "api -X PUT"*) [[ -n "$GH_PUT_FAILS" ]] && exit 1; echo '{}';;
   "api -X DELETE"*) echo deleted;;
@@ -107,6 +124,11 @@ esac
 
 def action(files, **env):
     d = repo(files)
+    subprocess.run(["git", "init", "-q", d], check=True)
+    subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-q",
+                    "--allow-empty", "-m", "base"], check=True)
+    global HEADSHA
+    HEADSHA = subprocess.run(["git", "-C", d, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     tmp = tempfile.mkdtemp()
     os.makedirs(os.path.join(tmp, "bin"))
     open(os.path.join(tmp, "bin", "gh"), "w").write(FAKE_GH)
@@ -133,6 +155,9 @@ expect("action: branch, one API commit per file, then the PR", r.returncode == 0
        and any("refs/heads/kit/node-22.21.1" in c for c in calls)
        and sum(c.startswith("api -X PUT") for c in calls) == 2
        and any(c.startswith("pr create") and "Node 22.20.0 → 22.21.1" in c for c in calls), (r.stdout + r.stderr, calls))
+expect("action: the branch starts at the checked-out commit, not the base tip",
+       any("git/refs -f ref=refs/heads/kit/node-22.21.1 -f sha=" + HEADSHA in c for c in calls), calls)
+expect("action: an older open proposal is closed", any(c.startswith("pr close 7") for c in calls), calls)
 r, calls = action({".nvmrc": "22.20.0\n"}, GH_PUT_FAILS="1")
 expect("action: a failed commit deletes the branch (no orphan 'already proposed')",
        r.returncode != 0 and any(c.startswith("api -X DELETE") and "kit/node-22.21.1" in c for c in calls), (r.stderr, calls))
