@@ -62,5 +62,6 @@
  "Fonts": "Fontes",
  "Images": "Imagens",
  "Site rules: configuration": "Regras do site: configuração",
- "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json)."
+ "Site rules: {n} cases covered by registered exceptions (web-budget.json).": "Regras do site: {n} casos cobertos por exceções registradas (web-budget.json).",
+ "Site rules: note": "Regras do site: aviso"
 }
