@@ -23,7 +23,7 @@ function failures(entries, type) {
 
 const EXPECTED = {
   slow: {
-    good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
+    good: [], 'good-reads': [], 'good-key': [], 'good-bg': [], 'good-enter': [], 'good-check': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
     'upload-good': [], 'upload-bad': ['request-id', 'upload-confirm', 'upload-dropzone', 'upload-progress'],
     'bad-request-id': ['request-id'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
@@ -46,7 +46,7 @@ const got = { slow: failures(slow, 'check'), fail: failures(fail, 'check'), cont
 // The good pages must have been through every check (a check that never ran
 // proves nothing).
 const RAN = {
-  slow: { good: ['busy', 'double', 'optimistic'], 'good-reads': ['busy', 'double', 'optimistic'], 'good-key': ['busy', 'double', 'optimistic', 'loading-state'], 'list-mocked': ['loading-state'], 'list-clock': ['loading-state'], 'list-hidden': ['loading-state'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
+  slow: { good: ['busy', 'double', 'optimistic'], 'good-reads': ['busy', 'double', 'optimistic'], 'good-key': ['busy', 'double', 'optimistic', 'loading-state'], 'good-enter': ['busy', 'double', 'optimistic'], 'good-check': ['busy', 'optimistic'], 'list-mocked': ['loading-state'], 'list-clock': ['loading-state'], 'list-hidden': ['loading-state'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
   fail: { good: ['error-alert', 'error-keeps-input', 'error-retry', 'error-retry-sends'], 'upload-good': ['upload-independent'] },
 };
 const ran = (entries, p) => new Set(entries.filter((e) => e.type === 'check' && page(e.route) === p).map((e) => e.check));
