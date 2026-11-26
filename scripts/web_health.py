@@ -447,7 +447,12 @@ def server_rows(s, bs, row, details):
         m = bs.get("measured")
         if m is not None:
             return bool(m.get(kind))
-        return kind != "scans" or bool(bs.get("indexes"))  # main from before "measured"
+        # Main from before "measured" (kit 1.9/1.10): it ran the route counts,
+        # and the index check when it had migrations; pagination and fetch
+        # did not exist yet, so their first run is a first measure.
+        if kind == "scans":
+            return bool(bs.get("indexes"))
+        return kind == "routes"
 
     def tolerated(name, label, items, base_items, fmt):
         # A baseline item main did not have = the baseline grew. Counted per

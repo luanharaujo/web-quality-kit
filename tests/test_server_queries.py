@@ -126,7 +126,7 @@ check("baseline: one more identical entry than main is red", panel(twice, fbr)[0
 grown = dict(fbr, baseline_fetch=fbr["baseline_fetch"] + [{"file": "x.ts", "line": 1, "rule": "fetch-no-timeout", "text": "fetch(u)"}])
 check("baseline: a fetch added to the baseline against main is red", panel(grown, fbr)[0] == 1)
 
-# --- review fixes: cache, missing source, server that never gets ready, check new on main ---
+# --- cache, missing source, server that never gets ready, check new on main ---
 cached = cfg("bad", routes=[{"route": "GET /orders"}])
 cached["server"] = dict(cached["server"], start=cached["server"]["start"].replace(" bad ", " cached "))
 cr = sq.check(cached, ROOT)
@@ -142,6 +142,43 @@ main_without = dict(new_scan, baseline_scans=[], measured={"routes": True, "scan
 check("a check main never ran is a first measure, not a growing baseline", panel(new_scan, main_without)[0] == 0)
 main_with = dict(main_without, measured=dict(main_without["measured"], scans=True))
 check("the same baseline grown on a main that ran the check is red", panel(new_scan, main_with)[0] == 1)
+old_main = {k: v for k, v in fbr.items() if k not in ("measured", "unpaged", "baseline_unpaged", "fetch", "baseline_fetch")}
+old_out = panel(fbr, old_main)[1]
+new_rows = [l for l in old_out.splitlines() if l.startswith("| ") and ("without pagination" in l or "without a time limit" in l)]
+check("a main from kit 1.9 (no pagination or fetch numbers) does not block the update in baseline mode",
+      len(new_rows) == 2 and all(l.startswith("| 🟡") for l in new_rows), old_out)
+same_old = dict(old_main, measured=None)
+same_old.pop("measured")
+check("same result against an old main with the same red items fails only for them, not for the new baselines",
+      panel(dict(fbr, routes=[], uncovered=[], scans=[]), dict(same_old, routes=[], uncovered=[], scans=[]))[0] == 0,
+      panel(dict(fbr, routes=[], uncovered=[], scans=[]), dict(same_old, routes=[], uncovered=[], scans=[]))[1])
+
+# --- pagination: a limit far above the cap, lists that do not page by nature -----
+def uncapped(**over):
+    c = cfg("good", routes=[{"route": "GET /orders"}, {"route": "GET /totals"}], **over)
+    c["server"] = dict(c["server"], start=c["server"]["start"].replace(" good ", " uncapped "))
+    return c
+
+
+ur = sq.check(uncapped(), ROOT)
+probs = {u["route"]: u["problem"] for u in ur["unpaged"]}
+check("pagination: a limit far above the cap that returns every row is caught",
+      "limit=1000" in probs.get("GET /orders", ""), ur["unpaged"])
+check("pagination: a grouped summary without an exemption is caught", "GET /totals" in probs, ur["unpaged"])
+ue = sq.check(uncapped(pagination={"exempt": {"GET /totals": "one row per status, a handful at most"}}), ROOT)
+check("pagination: an exempt route with a reason passes in absolute mode",
+      [u["route"] for u in ue["unpaged"]] == ["GET /orders"] and ue["mode"] == "absolute", ue["unpaged"])
+un = sq.check(uncapped(pagination={"exempt": {"GET /totals": ""}}), ROOT)
+check("pagination: an exemption without a reason is an error", any("without a reason: GET /totals" in e for e in un["errors"]), un["errors"])
+check("page_of: named list wins over an earlier one", sq.page_of('{"errors": [], "items": [1, 2]}') == ([1, 2], None))
+check("page_of: two unnamed lists are ambiguous", sq.page_of('{"a": [1], "b": [2]}')[0] is None)
+check("page_of: items_field pointing at a number is no list", sq.page_of('{"items": 3}', "items")[0] is None)
+
+# --- fetch(new Request(...)) and a forwarded incoming request -------------------
+rq, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/external_request.mjs"]), ROOT)
+check("fetch: new Request with a relative URL or a signal passes; without a signal it is caught",
+      [(c["line"], c["rule"]) for c in rq] == [(5, "fetch-no-timeout"), (9, "fetch-no-timeout")], rq)
+check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)
 
 # --- exemptions ------------------------------------------------------------------
 ex = sq.check(cfg("bad", exempt_tables={"orders": "fixed list of 10 rows"}), ROOT)

@@ -39,15 +39,18 @@ Config (server-queries.json, paths relative to the repository root):
   migrations      folder of .sql migrations (index check; empty = off)
   exempt_tables   {"plans": "reason"} small-by-nature tables
   pagination      {"param": "limit", "size": 10, "max": 50, "next_fields": [...],
-                  "items_field": "items"} (defaults shown; items_field default = the
-                  first list in the response)
+                  "items_field": "items", "exempt": {"GET /totals": "reason"}}
+                  (defaults shown; items_field default = items, data or results,
+                  else the only list in the response; exempt = tested lists that do
+                  not page by nature, such as a grouped summary, each with a reason)
   fetch_timeout   {"max_ms": 10000, "internal_hosts": ["api.example.com"]}
   baseline        {"routes": [...], "scans": [{"table": t, "sql": s}],
                    "unpaged": ["GET /x"], "fetch": [{"file": f, "text": t}]}
 
 5. Pagination: each tested list route, with more rows than a page, called
    with ?limit=size must return exactly size items and a next cursor/page;
-   with no limit it must stay at or under the cap. A route that fails is red
+   with no limit, and with a limit far above the cap, it must stay at or under
+   the cap. A route that fails is red
    (baseline mode: tolerated if in baseline.unpaged, which may not grow).
 6. Time limit: every fetch to an external host needs a signal
    (AbortSignal.timeout(ms) up to max_ms, or an AbortController); a binding
@@ -237,13 +240,22 @@ NEXT_FIELDS = ("next", "cursor", "next_cursor", "nextCursor", "next_page", "next
 
 
 def page_of(data, items_field=None, next_fields=NEXT_FIELDS):
-    """(items, next) of a list response: a bare JSON list has no next."""
+    """(items, next) of a list response: a bare JSON list has no next. Items
+    come from items_field, else items/data/results, else the only list in the
+    object; anything else (no list, two unnamed lists, a number) is None."""
     body = json.loads(data)
     if isinstance(body, list):
         return body, None
     if not isinstance(body, dict):
         return None, None
-    items = body.get(items_field) if items_field else next((v for v in body.values() if isinstance(v, list)), None)
+    if items_field:
+        items = body.get(items_field)
+    else:
+        named = [body[k] for k in ("items", "data", "results") if isinstance(body.get(k), list)]
+        lists = [v for v in body.values() if isinstance(v, list)]
+        items = named[0] if named else (lists[0] if len(lists) == 1 else None)
+    if not isinstance(items, list):
+        items = None
     nxt = next((body[f] for f in next_fields if body.get(f) not in (None, "", False)), None)
     return items, nxt
 
@@ -254,22 +266,25 @@ def with_param(path, name, value):
 
 def paging(cfg, root, tmp, server, routes, headers_for):
     """Each list route, with more rows than one page: limit=size must return
-    exactly size items and a next cursor/page; no limit must stay at or under
-    the default cap. Returns {route: problem or ""}."""
+    exactly size items and a next cursor/page; no limit, and a limit far above
+    the cap, must stay at or under the cap. Returns {route: problem or ""}."""
     p = cfg.get("pagination", {})
     size, cap = int(p.get("size", 10)), int(p.get("max", 50))
     param = p.get("param", "limit")
     fields = tuple(p.get("next_fields", NEXT_FIELDS))
     result = {}
-    for n, step in ((max(30, size * 2), "page"), (cap + 10, "cap")):
-        run(fill(cfg["seed"], n=n, tmp=tmp), root, f"seed {n}")
+    over = cap * 20  # a client asking for far more than the cap must still get at most the cap
+    for n, step in ((max(30, size * 2), "page"), (cap + 10, "cap"), (cap + 10, "over")):
+        if step != "over":  # same rows as the cap step
+            run(fill(cfg["seed"], n=n, tmp=tmp), root, f"seed {n}")
         headers = headers_for()
         for r in routes:
             key = route_key(r["route"])
             if result.get(key):
                 continue
             path = r.get("path") or key.split(" ", 1)[1]
-            url = server.base + (with_param(path, param, size) if step == "page" else path)
+            url = server.base + (with_param(path, param, size) if step == "page"
+                                 else with_param(path, param, over) if step == "over" else path)
             try:
                 _, _, data = get(url, {**headers, **r.get("headers", {})}, body=True)
                 items, nxt = page_of(data, r.get("items_field") or p.get("items_field"), fields)
@@ -283,6 +298,8 @@ def paging(cfg, root, tmp, server, routes, headers_for):
                                + ("" if nxt is not None else " and no next cursor"))
             elif step == "cap" and len(items) > cap:
                 result[key] = f"no {param} with {n} rows returned {len(items)} items (cap {cap})"
+            elif step == "over" and len(items) > cap:
+                result[key] = f"{param}={over} with {n} rows returned {len(items)} items (cap {cap})"
             else:
                 result.setdefault(key, "")
     return result
@@ -394,7 +411,8 @@ def check(cfg, root):
     if out["mode"] not in ("absolute", "baseline"):
         err.append(f"mode must be absolute or baseline, not {out['mode']!r}")
         return out
-    for name, why in {**cfg.get("exempt", {}), **cfg.get("exempt_tables", {})}.items():
+    for name, why in {**cfg.get("exempt", {}), **cfg.get("exempt_tables", {}),
+                      **cfg.get("pagination", {}).get("exempt", {})}.items():
         if not str(why).strip():
             err.append(f"exemption without a reason: {name}")
     counter = os.path.join(root, cfg.get("counter", ""))
@@ -447,7 +465,9 @@ def check(cfg, root):
         server = Server(cfg, root, tmp)
         counts, sql, errors = measure(cfg, root, tmp, server, cfg["routes"])
         err.extend(errors)
-        pages = paging(cfg, root, tmp, server, cfg["routes"], lambda: headers_for(cfg, root, tmp, server))
+        no_paging = {route_key(k) for k in cfg.get("pagination", {}).get("exempt", {})}
+        listed = [r for r in cfg["routes"] if route_key(r["route"]) not in no_paging]
+        pages = paging(cfg, root, tmp, server, listed, lambda: headers_for(cfg, root, tmp, server))
         paged_ok = {route_key(k) for k in base.get("unpaged", [])} if baseline_mode else set()
         for key, problem in sorted(pages.items()):
             if problem:
