@@ -406,6 +406,45 @@ for what, change in [("a route that is not an object", {"routes": ["POST /x"]}),
 r = run(app, ["not an object"], dynamic=False)
 check("config: a file that is not an object is an error", r["errors"] != [], r)
 
+# Commented-out code never satisfies a rule.
+app = copy_case("good")
+text = open(os.path.join(app, "src", "worker.js")).read()
+head, body = text.split("async function signup(request, env) {")
+put(app, "src/worker.js", head + """async function signup(request, env) {
+  // const rl = await env.RATELIMIT.limit({ key: "signup" });
+  /* await verifyTurnstile(token, env, "/signup", "localhost"); */
+  // env.obs.log.info("login_attempt", { result: "ok" });
+  return json({ ok: true });
+}
+""")
+found = ids(run(app, dynamic=False))
+check("commented-out rate limit, Turnstile and event do not count",
+      {"A2:POST /signup", "A3:POST /signup:missing", "A6:POST /signup"} <= found, found)
+sample = 'a("//x", `/*y*/`); // z\n/* w */ b(/[/*]\\/\\//, "q"); c\n'
+stripped = ac.strip_comments(sample, ".js")
+check("strip_comments keeps strings, patterns and code",
+      stripped == sample.replace("// z", "    ").replace("/* w */", "       "), repr(stripped))
+check("strip_comments reads SQL and TOML comments",
+      ac.strip_comments("a -- b\n", ".sql") == "a     \n" and ac.strip_comments('x = "#"  # y\n', ".toml") == 'x = "#"     \n')
+
+app = copy_case("good")
+c = load("good")
+c["server"]["start"] = "UNUSED=${UNUSED:-1}; " + c["server"]["start"]
+r = run(app, c)
+check("server.start keeps the shell's braces", r["errors"] == [] and r["findings"] == [], r["errors"] + r["findings"])
+
+narrow, wide = dict(main_res, source=["api/src"]), dict(main_res, source=["./api"])
+rc, out = panel(wide, narrow)
+check("a wider source folder against main passes", rc == 0 and "source_narrowed" not in out, out)
+rc, out = panel(narrow, wide)
+check("a narrower source folder against main fails", rc == 1 and "source_narrowed" in out, out)
+
+app = copy_case("good")
+put(app, "src/a.js", "export const a = (p) => verifyPassword(p);\n")
+put(app, "src/b.js", "export const b = (p) => verifyPassword(p);\n")
+found = {i for i in ids(run(app, dynamic=False)) if i.startswith("A1:password")}
+check("A1: each file with a password login has its own id", found == {"A1:password", "A1:password#2"}, found)
+
 # A baseline never covers a new occurrence.
 app = copy_case("bad")
 once = ids(run(app, load("bad"), dynamic=False))

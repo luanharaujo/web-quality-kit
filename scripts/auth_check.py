@@ -134,6 +134,71 @@ def read(p):
         return ""
 
 
+def strip_comments(text, ext):
+    """The text with comments blanked (same length and lines): commented-out
+    code never satisfies a rule, and a comment is never a finding."""
+    out = list(text)
+
+    def blank(a, b):
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
+    html = ext in (".html", ".htm")
+    hashed = ext in (".py", ".toml")
+    sql = ext == ".sql"
+    slashes = not (html or hashed or sql)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if html:
+            if text.startswith("<!--", i):
+                end = text.find("-->", i + 4)
+                end = n if end < 0 else end + 3
+                blank(i, end)
+                i = end
+            else:
+                i += 1
+        elif c in "\"'" or (c == "`" and slashes):
+            j = i + 1
+            while j < n and text[j] != c and (c == "`" or text[j] != "\n"):
+                j += 2 if text[j] == "\\" else 1
+            i = j + 1
+        elif (hashed and c == "#") or (sql and text.startswith("--", i)) or (slashes and text.startswith("//", i)):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            blank(i, end)
+            i = end
+        elif (slashes or sql) and text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            blank(i, end)
+            i = end
+        elif slashes and c == "\\":
+            i += 2
+        elif slashes and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+*%~^-]|\breturn)\s*$", text[max(0, i - 40):i]):
+            # A regular expression literal: quotes and slashes in it are its own.
+            j, inside = i + 1, False
+            while j < n and text[j] != "\n" and (inside or text[j] != "/"):
+                if text[j] == "\\":
+                    j += 1
+                elif text[j] in "[]":
+                    inside = text[j] == "["
+                j += 1
+            i = j + 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def code(p):
+    """A source or wrangler file as the static rules read it."""
+    ext = os.path.splitext(p)[1]
+    if ext in (".json", ".jsonc"):
+        ext = ".js"
+    return strip_comments(read(p), ext)
+
+
 def source_files(cfg, root):
     folders = cfg.get("source") or ["."]
     seen, out = set(), []
@@ -196,7 +261,7 @@ def regions(route, root, srcs):
     if h:
         fn, _, name = h.partition(":")
         p = os.path.join(root, fn)
-        text = read(p)
+        text = code(p)
         m = re.search(r"(?:function\s+%s\b|(?:const|let|var)\s+%s\s*=|\b%s\s*\([^)]*\)\s*(?::[^{;=]*)?\{)" % ((re.escape(name),) * 3), text)
         if not m:
             return []
@@ -206,7 +271,7 @@ def regions(route, root, srcs):
     lit = re.compile(r"""['"`]%s['"`]""" % re.escape(path))
     out = []
     for p in srcs:
-        lines = read(p).splitlines()
+        lines = code(p).splitlines()
         for i, line in enumerate(lines):
             if lit.search(line) and (ROUTE_START.search(line) or re.search(r"\b(?:app|router|r)\.\w+\(", line)):
                 end = len(lines)
@@ -242,7 +307,7 @@ def wrangler_ratelimits(root):
         for dp, dns, fns in os.walk(root):
             dns[:] = [d for d in dns if d not in SKIP_DIRS]
             if fn in fns:
-                text = read(os.path.join(dp, fn))
+                text = code(os.path.join(dp, fn))
                 if fn.endswith(".toml"):
                     for blk in re.split(r"(?m)^\[\[", text):
                         if re.match(r"(?:env\.[\w-]+\.)?(?:ratelimits|unsafe\.bindings)\]\]", blk):
@@ -263,7 +328,7 @@ def check_password(cfg, root, srcs, fnd):
     uses = []
     for p in srcs:
         rel = os.path.relpath(p, root)
-        text = read(p)
+        text = code(p)
         for i, line in enumerate(text.splitlines(), 1):
             if WEAK_HASH.search(line):
                 fnd.add("A1", f"weakhash:{rel}", f"{rel}:{i}", "MD5, SHA-1 or SHA-256 on its own applied to a password (use Argon2id or scrypt)")
@@ -275,9 +340,13 @@ def check_password(cfg, root, srcs, fnd):
                     fnd.add("A1", f"plain:{rel}", f"{rel}:{i}", "a password column that is not a hash (store only the hash)")
     method_password = "password" in (cfg.get("methods") or [])
     if (uses or method_password) and not exc:
-        rel, i = uses[0] if uses else ("", 0)
-        fnd.add("A1", "password", f"{rel}:{i}" if rel else ".quality/auth.json",
-                "password login is forbidden by default (passkey or code); a registered exception needs reason, approved_by, date and the algorithm")
+        first = {}
+        for rel, i in uses:
+            first.setdefault(rel, f"{rel}:{i}")
+        # One per file: a baseline that tolerates one never covers a new file.
+        for where in list(first.values()) or [".quality/auth.json"]:
+            fnd.add("A1", "password", where,
+                    "password login is forbidden by default (passkey or code); a registered exception needs reason, approved_by, date and the algorithm")
         return
     if not exc:
         return
@@ -325,7 +394,7 @@ def check_password(cfg, root, srcs, fnd):
     # The declared numbers must be the ones in the code.
     for p_ in srcs:
         rel = os.path.relpath(p_, root)
-        text = read(p_)
+        text = code(p_)
         for m in re.finditer(r"(?:bcrypt\.(?:hash|hashSync)\([^)]*?,\s*(\d+)\s*\)|genSalt(?:Sync)?\(\s*(\d+)|\b(?:salt_?rounds|rounds|cost)\s*[:=]\s*(\d+))", text, re.I):
             val = int(next(g for g in m.groups() if g))
             if val < 12 and re.search(r"bcrypt", text, re.I):
@@ -455,15 +524,15 @@ def check_verify_url(root, srcs, fnd):
         for fn in fns:
             if fn in ("wrangler.toml", "wrangler.json", "wrangler.jsonc"):
                 path = os.path.join(dp, fn)
-                text = read(path)
+                text = code(path)
                 if "TURNSTILE_VERIFY_URL" in text:
                     rel = os.path.relpath(path, root)
                     fnd.add("A3", f"verify-url-wrangler:{rel}", rel,
                             "TURNSTILE_VERIFY_URL is set in the wrangler config: it would point production's Turnstile check elsewhere (it is for tests only)")
-    code = [(p, read(p)) for p in srcs if not p.endswith(".sql")]
+    texts = [(p, code(p)) for p in srcs if not p.endswith(".sql")]
     # The check may live next to the siteverify call, in another file.
-    guarded = any(local_guard(t) for _, t in code if "siteverify" in t or "TURNSTILE_VERIFY_URL" in t)
-    for p, text in code:
+    guarded = any(local_guard(t) for _, t in texts if "siteverify" in t or "TURNSTILE_VERIFY_URL" in t)
+    for p, text in texts:
         m = VERIFY_READ.search(text)
         if m and not guarded:
             rel = os.path.relpath(p, root)
@@ -474,7 +543,7 @@ def check_verify_url(root, srcs, fnd):
 def check_turnstile_impl(cfg, root, srcs, fnd):
     """The file that calls siteverify must read success, hostname and action."""
     for p in srcs:
-        text = read(p)
+        text = code(p)
         if "turnstile/v0/siteverify" not in text:  # the file that holds Cloudflare's address
             continue
         rel = os.path.relpath(p, root)
@@ -503,7 +572,7 @@ LOGIN_TABLE = re.compile(r"login|codigo|code|desafio|challenge|pair|cadastro|sig
 def check_global(cfg, root, srcs, fnd):
     for p in srcs:
         rel = os.path.relpath(p, root)
-        text = read(p)
+        text = code(p)
         if not re.search(r"login|codigo|challenge|desafio|pair|cadastro", text, re.I):
             continue
         for m in COUNT_FROM.finditer(text):
@@ -523,7 +592,7 @@ def check_global(cfg, root, srcs, fnd):
 def detect_login(root, srcs, ignore=()):
     hits = []
     for p in srcs:
-        text = read(p)
+        text = code(p)
         rel = os.path.relpath(p, root)
         for what, rx in DETECT:
             for m in rx.finditer(text):
@@ -630,7 +699,7 @@ def static(cfg, root, declared):
         if p.endswith(".sql"):
             continue
         rel = os.path.relpath(p, root)
-        text = read(p)
+        text = code(p)
         for m in ROUTE_LIT.finditer(text):
             path = m.group(1)
             if path not in declared_p and path not in seen and not any(path.startswith(d.rstrip("/") + "/") and d != "/" for d in declared_p if d.endswith("/")):
@@ -729,9 +798,11 @@ class Server:
     def __init__(self, cfg, root, secret, verify_url):
         srv = cfg["server"]
         self.port = free_port()
-        self.url = srv["url"].format(port=self.port)
+        self.url = srv["url"].replace("{port}", str(self.port))
         self.log = tempfile.TemporaryFile()
-        cmd = srv["start"].format(port=self.port, turnstile_secret=secret, verify_url=verify_url)
+        # Only these placeholders: other braces belong to the shell.
+        cmd = srv["start"].replace("{port}", str(self.port)).replace("{turnstile_secret}", secret) \
+            .replace("{verify_url}", verify_url)
         env = dict(os.environ, TURNSTILE_SECRET=secret, TURNSTILE_VERIFY_URL=verify_url)
         self.proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=self.log, stderr=subprocess.STDOUT,
                                      start_new_session=True, env=env)

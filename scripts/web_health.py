@@ -593,7 +593,10 @@ def auth_rows(x, bx, row, details):
         # What main checked and this change stops checking.
         weaker += [f"route_removed:{r}" for r in bx.get("routes") or [] if r not in (x.get("routes") or [])]
         before_src, src = set(bx.get("source") or ["."]), set(x.get("source") or ["."])
-        if bx.get("routes") and "." not in src and before_src - src:
+        def covered(old_dir):  # still read: the folder itself or one above it
+            o = os.path.normpath(old_dir)
+            return any(n == "." or o == n or o.startswith(n + "/") for n in map(os.path.normpath, src))
+        if bx.get("routes") and not all(covered(o) for o in before_src):
             weaker.append("source_narrowed")
         weaker += [f"d1_calls_removed:{c}" for c in bx.get("d1_calls") or [] if c not in (x.get("d1_calls") or [])]
         if bx.get("routes") and bx.get("mode") == "absolute" and x.get("mode") == "baseline":
