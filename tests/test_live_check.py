@@ -209,6 +209,16 @@ def main():
         Quiet.rules = {"/_astro/": "public, max-age=31536000, immutable", "/": "public, max-age=0, must-revalidate"}
         r = run(base, published, "/", "--cache", "--cache-sample=2")
         assert r.returncode == 0 and "sample of 2 of" in r.stdout and "🟢 every" not in r.stdout, r.stdout
+        # The same with an undeclared build folder next to it (its note must not
+        # change the count of hashed files).
+        side = {"assets/a-Bh-3x9aZ.js": "1", "assets/b-C38fXH4l.css": "2"}
+        write(live, side)
+        write(published, side)
+        r = run(base, published, "/", "--cache", "--cache-sample=2")
+        assert "sample of 2 of 7" in r.stdout and "🟢 every" not in r.stdout and "not declared" in r.stdout, r.stdout
+        for name in side:
+            os.remove(os.path.join(live, name))
+            os.remove(os.path.join(published, name))
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr
