@@ -194,6 +194,13 @@ if [[ -n "${KNIP:-}" ]]; then
   [[ "$KNIP" == "absolute" || "$KNIP" == "baseline" ]] \
     || { echo "::error::knip must be absolute or baseline, not '$KNIP'"; exit 1; }
   log "Unused code (knip)"
+  # knip loads the repo's own configs (vite.config, astro.config...), so the
+  # repo's dependencies must be installed: without them it fails, and a run
+  # with them and one without would not even find the same things.
+  if [[ -f package.json ]] && python3 -c 'import json,sys; p=json.load(open("package.json")); sys.exit(0 if p.get("dependencies") or p.get("devDependencies") else 1)' \
+     && [[ ! -d node_modules ]]; then
+    echo "::error::knip needs the repo's dependencies: run npm ci (or your package manager) before web-ci"; exit 1
+  fi
   # The repo's own knip config (knip.json, package.json "knip") is used when present.
   "$BIN/knip" --reporter json --no-exit-code --no-progress > "$OUT/knip.json" 2> "$OUT/knip.log" \
     || { echo "::error::knip did not run"; tail -20 "$OUT/knip.log"; exit 1; }

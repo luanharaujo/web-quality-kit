@@ -99,9 +99,11 @@ def eslint_cases(path, root):
 KNIP_RULES = {"files": "unused-file", "dependencies": "unused-dependency",
               "devDependencies": "unused-dev-dependency", "optionalPeerDependencies": "unused-dependency",
               "exports": "unused-export", "types": "unused-type", "namespaceMembers": "unused-export",
-              "enumMembers": "unused-enum-member", "classMembers": "unused-class-member",
-              "duplicates": "duplicate-export", "unlisted": "unlisted-dependency",
-              "binaries": "unlisted-binary", "unresolved": "unresolved-import"}
+              "enumMembers": "unused-enum-member", "duplicates": "duplicate-export",
+              "unlisted": "unlisted-dependency", "binaries": "unlisted-binary", "unresolved": "unresolved-import",
+              "catalog": "unused-catalog-entry", "catalogReferences": "unresolved-catalog-reference",
+              "subpaths": "unused-subpath"}
+KNIP_FIELDS = {"file", "owners"}
 
 
 def knip_cases(path):
@@ -109,8 +111,16 @@ def knip_cases(path):
     does not make an old finding new."""
     raw = open(path).read().strip()
     data = json.loads(raw) if raw else {}
+    # A good run always writes {"issues": [...]}; anything else is a broken
+    # run, never "no findings".
+    if not isinstance(data, dict) or not isinstance(data.get("issues"), list):
+        raise ValueError("no \"issues\" list (empty or not a knip JSON report)")
     cases = []
-    for entry in data.get("issues", []):
+    for entry in data["issues"]:
+        unknown = [k for k, v in entry.items() if k not in KNIP_RULES and k not in KNIP_FIELDS and v]
+        if unknown:
+            # A newer knip with a kind the kit does not know must not pass in silence.
+            raise ValueError(f"unknown kind of finding {unknown} in {entry.get('file')}: update the kit")
         for kind, rule in KNIP_RULES.items():
             for item in entry.get(kind) or []:
                 if isinstance(item, list):   # duplicates: a group of names
@@ -797,10 +807,12 @@ def compare(a):
     print("\n".join(out))
     if hard_failed and a.no_fail:
         site = {dict(CASE_METRICS)[k] for k in SITE_RULES} | {"site rules configuration"}
+        unused = {dict(CASE_METRICS)["knip"], "knip configuration"}
         rules = set(db_hard) | set(rule_hard)
-        groups = [("Performance budget", [x for x in hard_failed if x not in site and x not in rules]),
+        groups = [("Performance budget", [x for x in hard_failed if x not in site | unused | rules]),
                   ("Rule broken", [x for x in hard_failed if x in rules]),
-                  ("Site rules", [x for x in hard_failed if x in site])]
+                  ("Site rules", [x for x in hard_failed if x in site]),
+                  ("Unused code", [x for x in hard_failed if x in unused])]
         for name, broken in groups:
             if broken:
                 print(f"::error::{name}: {', '.join(broken)}", file=sys.stderr)
