@@ -345,7 +345,8 @@ class Interaction {
       this.fail(key, 'error-code', 'the request had no x-request-id, so the error cannot show its code');
     } else {
       const texts = alertOk ? await alert.allInnerTexts().catch(() => []) : [];
-      if (texts.some((t) => t.includes(rid))) this.pass(key, 'error-code');
+      // innerText applies text-transform: an uppercase alert still shows the id.
+      if (texts.some((t) => t.toLowerCase().includes(rid.toLowerCase()))) this.pass(key, 'error-code');
       else this.fail(key, 'error-code', `the error in role=alert does not show the request's id (${rid}): add "error code: <id>" so support can find it in the log`);
     }
     if (!retryOk) this.fail(key, 'error-retry', 'when the network failed there was no "try again" button');

@@ -2,6 +2,7 @@
 """Proofs for scripts/interaction_gate.py: route scan, coverage, new vs baseline."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -151,6 +152,23 @@ class Compare(unittest.TestCase):
         self.assertTrue(worse)
         new_main = dict(health(), checks_known=g.KNOWN_CHECKS)
         _, worse = g.compare(new_main, health(failing=["POST /a request-id"]), "baseline", "en")
+        self.assertTrue(worse)
+
+    def test_known_checks_match_the_fixture(self):
+        # Names passed as the 2nd argument of fail/pass/warn/problem, plus the contract report.
+        names = set()
+        folder = os.path.join(os.path.dirname(__file__), "..", "interaction")
+        for name in os.listdir(folder):
+            if name.endswith(".mjs"):
+                text = open(os.path.join(folder, name)).read()
+                names |= set(re.findall(r"\.(?:fail|pass|warn|problem)\(key, '([a-z-]+)'", text))
+                if "type: 'contract'" in text:
+                    names.add("contract")
+        self.assertEqual(sorted(names), sorted(g.KNOWN_CHECKS))
+
+    def test_read_checks_still_count_against_an_older_main(self):
+        old_main = health()  # saved before checks_known existed
+        _, worse = g.compare(old_main, health(failing=["GET /items read-duplicate"]), "baseline", "en")
         self.assertTrue(worse)
 
     def test_all_covered_is_green(self):
