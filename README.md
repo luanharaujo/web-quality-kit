@@ -146,6 +146,17 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
           paths: / /adm/versao.json /treinos/
 ```
 
+## Node.js updates (`actions/node-update`)
+
+Copy `templates/node-update.yml`. Once a week it reads nodejs.org's own release list and, when the LTS line the repo pins has a newer patch or minor, opens a pull request that changes only that number in `.node-version`, `.nvmrc` and `package.json` `engines.node` (exact, `^` or `~`). No Renovate, no other service.
+
+- Never a new major: a newer LTS is only reported in the PR and in the run. Moving to it is a decision.
+- A major alone (`22`), an alias (`lts/*`) or a range (`>=20`) already floats: nothing changes.
+- The PR is opened by a GitHub App (its token is the `token` input), so the repo's CI runs on it, and its commits are made through the API, signed by GitHub. A PR opened with the default `GITHUB_TOKEN` would not run CI.
+- One PR per version (`kit/node-X.Y.Z`). Closing it and keeping the branch means "no" for that version; a failed run deletes the branch it made.
+- The repo's CI tests the new version only if it reads the version file (`actions/setup-node` with `node-version-file: .nvmrc`), not a fixed `node-version`.
+- Merging is the owner's call, like any PR.
+
 ## Security (`actions/security`)
 
 Secrets with [gitleaks](https://github.com/gitleaks/gitleaks) and code patterns with [Semgrep CE](https://semgrep.dev), for any repository (web, Swift, anything in git), "never worse":

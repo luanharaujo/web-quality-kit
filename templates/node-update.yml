@@ -1,0 +1,40 @@
+# Copy to .github/workflows/node-update.yml. Replace the all-zero SHA with the release
+# commit, with the version in a comment (never @v1), like the other kit actions.
+#
+# Once a week: if the Node.js LTS line pinned in .node-version, .nvmrc or
+# package.json engines has a newer patch or minor, a pull request moves the pin.
+# The PR is opened by a GitHub App, so the repo's CI runs on it like on any PR;
+# merging is the owner's call. A new major is never proposed, only reported.
+name: Node update
+
+on:
+  schedule:
+    - cron: "41 7 * * 2"   # Tuesday 07:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-update
+  cancel-in-progress: false
+
+jobs:
+  node-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.NODE_UPDATE_CLIENT_ID }}
+          private-key: ${{ secrets.NODE_UPDATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: luanharaujo/web-quality-kit/actions/node-update@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit
+        with:
+          token: ${{ steps.token.outputs.token }}
+          lang: pt    # en for a public repo
