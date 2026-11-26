@@ -70,6 +70,18 @@ expect("after apply, no pin needs a change", plan(d)["files"] == [], plan(d))
 
 p = plan(repo({".nvmrc": "22.20.0\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
 expect("a pin of another major (engines ^18) is left alone", [f["path"] for f in p["files"]] == [".nvmrc"], p)
+p = plan(repo({".nvmrc": "22\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
+expect("a floating .nvmrc 22 still names the line: engines ^18 is left alone", p["files"] == [], p)
+p = plan(repo({".nvmrc": "22.21.1\n", ".node-version": "22.20.0\n"}))
+expect("the most behind pin of the line decides", [f["path"] for f in p["files"]] == [".node-version"]
+       and p["current"] == "22.20.0", p)
+d = repo({".nvmrc": "22.20.0\r\n"})
+open(os.path.join(d, "package.json"), "w", newline="").write('{\r\n  "engines": {"node": "22.20.0"}\r\n}\r\n')
+pf = os.path.join(tempfile.mkdtemp(), "plan.json")
+json.dump(plan(d), open(pf, "w"))
+subprocess.run([sys.executable, SCRIPT, "apply", d, pf], check=True)
+expect("CRLF files keep CRLF", open(os.path.join(d, "package.json"), newline="").read()
+       == '{\r\n  "engines": {"node": "22.21.1"}\r\n}\r\n' and open(os.path.join(d, ".nvmrc"), newline="").read() == "22.21.1\r\n", "")
 p = plan(repo({".nvmrc": "22\n"}))
 expect("a major alone already floats: nothing changes", p["files"] == [] and p["current"] is None, p)
 p = plan(repo({".nvmrc": "lts/*\n"}))
@@ -112,7 +124,9 @@ case "$*" in
   "api repos/o/r -q .default_branch") echo main;;
   "api repos/o/r/git/ref/heads/main -q .object.sha") echo abc123;;
   "api repos/o/r/git/refs -f"*) echo '{}';;
-  "pr list"*) echo 7;;
+  "pr list"*) echo '[{"number": 7, "headRefName": "kit/node-22.20.5", "isCrossRepository": false},
+    {"number": 8, "headRefName": "kit/node-update-fix", "isCrossRepository": false},
+    {"number": 9, "headRefName": "kit/node-22.19.0", "isCrossRepository": true}]';;
   "pr close"*) echo closed;;
   "api repos/o/r/contents/"*"?ref="*) echo blobsha;;
   "api -X PUT"*) [[ -n "$GH_PUT_FAILS" ]] && exit 1; echo '{}';;
@@ -158,6 +172,8 @@ expect("action: branch, one API commit per file, then the PR", r.returncode == 0
 expect("action: the branch starts at the checked-out commit, not the base tip",
        any("git/refs -f ref=refs/heads/kit/node-22.21.1 -f sha=" + HEADSHA in c for c in calls), calls)
 expect("action: an older open proposal is closed", any(c.startswith("pr close 7") for c in calls), calls)
+expect("action: a hand-made kit/node-* branch and a fork's PR are left alone",
+       not any(c.startswith(("pr close 8", "pr close 9")) for c in calls), calls)
 r, calls = action({".nvmrc": "22.20.0\n"}, GH_PUT_FAILS="1")
 expect("action: a failed commit deletes the branch (no orphan 'already proposed')",
        r.returncode != 0 and any(c.startswith("api -X DELETE") and "kit/node-22.21.1" in c for c in calls), (r.stderr, calls))

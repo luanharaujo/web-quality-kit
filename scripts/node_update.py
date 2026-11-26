@@ -63,16 +63,36 @@ def pins(repo):
     return out
 
 
+def runtime_major(repo):
+    """The major written in .node-version or .nvmrc ("22", "v22.11.0"); None
+    for an alias (lts/*) or no file."""
+    for name in (".node-version", ".nvmrc"):
+        path = os.path.join(repo, name)
+        if os.path.isfile(path):
+            m = re.match(r"^v?(\d+)(?:\.|$)", open(path).read().strip())
+            if m:
+                return int(m.group(1))
+    return None
+
+
 def plan(repo, index):
     found = pins(repo)
     result = {"current": None, "target": None, "security": False, "newer_lts": None, "files": []}
     if not found:
         return result
-    # The line the repo runs on: its version file, else engines. Pins of
-    # another major (engines "^18.17.0" next to .nvmrc 22) say what else is
-    # supported; changing them is a decision, so they are left alone.
-    runtime = [p for p in found if p[4] == "file"] or found
-    current = max(p[3] for p in runtime)
+    # The line the repo runs on: the major of its version file, even when
+    # that file floats ("22"); else the newest engines pin. Pins of another
+    # major (engines "^18.17.0" next to .nvmrc 22) say what else is supported;
+    # changing them is a decision, so they are left alone.
+    major = runtime_major(repo)
+    if major is None:
+        major = max(p[3] for p in found)[0]
+    line = [p for p in found if p[3][0] == major]
+    if not line:
+        return result
+    # The most behind pin decides: .nvmrc 22.21.1 next to .node-version
+    # 22.20.0 still gets the update.
+    current = min(p[3] for p in line)
     result["current"] = ".".join(map(str, current))
     releases = [(ver(r["version"]), r) for r in index if ver(r.get("version", ""))]
     same = [(v, r) for v, r in releases if v[0] == current[0]]
@@ -88,8 +108,8 @@ def plan(repo, index):
         return result
     result["target"] = ".".join(map(str, target))
     result["security"] = any(r.get("security") for v, r in same if current < v <= target)
-    for path, old, prefix, v, kind in found:
-        if v[0] == current[0] and v < target:
+    for path, old, prefix, v, kind in line:
+        if v < target:
             result["files"].append({"path": path, "old": old, "new": prefix + result["target"], "kind": kind})
     return result
 
@@ -97,7 +117,7 @@ def plan(repo, index):
 def apply(repo, p):
     for f in p["files"]:
         path = os.path.join(repo, f["path"])
-        text = open(path).read()
+        text = open(path, newline="").read()   # keep CRLF as it is
         if f["kind"] == "engines":
             # Only the value of "node" inside "engines" changes; the rest of
             # package.json keeps its bytes (formatting, order, other fields).
@@ -108,7 +128,7 @@ def apply(repo, p):
         if not n:
             print(f"::error::{f['path']}: {f['old']} not found", file=sys.stderr)
             return 1
-        open(path, "w").write(new)
+        open(path, "w", newline="").write(new)
     return 0
 
 
