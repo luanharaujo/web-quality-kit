@@ -102,7 +102,7 @@ class H(http.server.BaseHTTPRequestHandler):
         pass
 
     def reply(self, code, obj):
-        data = json.dumps(obj).encode()
+        data = STATE.get("raw") or json.dumps(obj).encode()
         self.send_response(code); self.send_header("Content-Length", str(len(data)))
         for k, v in STATE["headers"].items():
             self.send_header(k, v)
@@ -160,6 +160,9 @@ r = run(sha=SHA2)
 check("a refused description fails without blaming the permission", r.returncode == 1 and "pull-requests" not in r.stdout, r.stdout)
 STATE["patch"] = 502
 check("GitHub down only warns", run(sha=SHA2).returncode == 0)
+STATE["raw"] = b"<html>oops"
+r = run(sha=SHA2)
+check("an answer that is not JSON only warns", r.returncode == 0 and "::warning::" in r.stdout and not r.stderr, r.stderr)
 srv.shutdown()
 
 # --- the action and the template ----------------------------------------------------
