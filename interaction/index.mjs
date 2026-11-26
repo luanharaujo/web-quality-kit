@@ -46,7 +46,7 @@ const PROBE = fs.readFileSync(path.join(HERE, 'probe.js'), 'utf8');
 export const DEFAULTS = {
   holdMs: 2000,
   busyWithinMs: 400,
-  userWindowMs: 5000, // a write up to 5 s after a tap is that tap's (reads may come first)
+  userWindowMs: 1500, // a write up to 1.5 s after a tap, or after a read that tap started, is that tap's
   // English by default. An app in another language sets "success" and "retry"
   // in its interaction.json (each replaces the whole pattern, so list English too).
   success: '\\b(booked|confirmed|reserved|scheduled|paid|saved|sent|success(fully)?|done)\\b',
@@ -55,6 +55,7 @@ export const DEFAULTS = {
   exclude: [],
   duplicate_reads_ok: [],
   no_loading_state: [],
+  api_hosts: [], // other hosts of the app's own API (reads to them count)
 };
 
 export function loadConfig() {
@@ -135,6 +136,8 @@ class Interaction {
       if (this.handled.has(request)) return handler(route, request);
       const read = Reads.isRead(request);
       if (!read && !WRITE_METHODS.has(request.method())) return handler(route, request);
+      // Writes while the kit types in a search field (autosave) are not a tap's.
+      if (!read && this.reads.typing) return handler(route, request);
       this.handled.add(request);
       const proceed = () => handler(route, request);
       const run = read ? this.reads.check(route, request, proceed) : this.check(route, request, proceed);
@@ -181,7 +184,7 @@ class Interaction {
     if (!['fetch', 'xhr', 'document'].includes(kind)) return proceed();
 
     const state = await this.state();
-    const userAction = state && state.sinceAction >= 0 && state.sinceAction <= this.cfg.userWindowMs;
+    const userAction = (state && state.sinceAction >= 0 && state.sinceAction <= this.cfg.userWindowMs) || this.reads.chained();
     if (!userAction && kind !== 'document') return proceed(); // background write, not a tap
     report({ type: 'seen', route: key, test: this.testInfo.titlePath.join(' > ') });
     if (listed(this.cfg.exclude, key)) return proceed();
@@ -220,6 +223,7 @@ class Interaction {
       const point = await page.evaluate(() => window.__kit && window.__kit.retapPoint());
       if (point) {
         await page.evaluate(() => { window.__kit.suppress = true; });
+        this.reads.newAction(); // reads the second tap repeats are not duplicates
         if (point.key) await page.keyboard.press('Enter');
         else await page.mouse.click(point.x, point.y);
         await page.evaluate(() => { window.__kit.suppress = false; });

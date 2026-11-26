@@ -246,6 +246,13 @@ the panel lists what they find and nothing fails. Set `reads: enforce` once a
 repository passes them; the default will change after they have run on the
 real repositories.
 
+Only reads to the app count: the page's host, its subdomains (and those of
+the site behind `www.`), and hosts listed in `api_hosts`. A write counts as a
+tap's when it leaves within 1.5 s of the tap, or of the end of a read that tap
+started (up to 10 s in all); later writes, such as autosave, are left alone.
+Every exception needs a reason, `optimistic` included: an entry without one
+now stops the gate.
+
 `mode: new` (new repositories) makes any gap red. `mode: baseline`
 (existing ones) only fails when something gets
 worse than main. Resumable uploads (tus or multipart) are recommended for

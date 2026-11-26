@@ -153,7 +153,12 @@
   k.loadAt = -1;
   k.loadHow = '';
   const LOAD_REGION = '[role=status],[aria-live]:not([aria-live=off])';
-  const signal = (how) => { k.loadAt = now(); k.loadHow = how; };
+  k.signals = []; // recent loading signals: { at, how }
+  const signal = (how) => {
+    k.loadAt = now(); k.loadHow = how;
+    k.signals.push({ at: performance.timeOrigin + k.loadAt, how }); // wall clock, like the kit's
+    if (k.signals.length > 50) k.signals.shift();
+  };
   const LOAD_SHOWN = '[role=status],[aria-live]:not([aria-live=off]),[role=progressbar],progress';
   const HIDING_CLASS = /(^|[\s_-])(hidden|d-none|invisible|collapsed?)($|[\s_-])/;
   const wasHidden = (m, t) => {
@@ -200,10 +205,13 @@
     attributes: true, attributeOldValue: true, attributeFilter: ['aria-busy', 'hidden', 'class', 'style'], childList: true, subtree: true, characterData: true,
   });
 
-  k.loadingSince = (t) => {
-    if (k.loadAt >= t - 500) return k.loadHow;
+  // A signal from shortly before the read left (the code that starts it often
+  // shows "loading" first) up to `within` ms after it. `t` is wall-clock ms.
+  k.loadingSince = (t, within = 400) => {
+    const hit = k.signals.find((x) => x.at >= t - 500 && x.at <= t + within);
+    if (hit) return hit.how;
     // Busy region already in the first HTML (server-rendered skeleton) while the page is still loading.
-    if (t < 3000 && document.querySelector('[aria-busy=true]')) return 'aria-busy from the first HTML';
+    if (t - performance.timeOrigin < 3000 && document.querySelector('[aria-busy=true]')) return 'aria-busy from the first HTML';
     return '';
   };
 
