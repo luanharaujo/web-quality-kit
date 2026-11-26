@@ -27,7 +27,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function files(p) {
-  if (!fs.existsSync(p)) return []
+  if (!fs.existsSync(p)) { console.error(`source not found: ${p}`); process.exit(2) }
   if (fs.statSync(p).isFile()) return EXT.test(p) ? [p] : []
   const out = []
   for (const e of fs.readdirSync(p, { withFileTypes: true })) {
@@ -42,11 +42,14 @@ function files(p) {
 // The text a URL argument starts with, when the code shows it.
 function urlStart(node) {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
-  if (ts.isTemplateExpression(node)) return node.head.text
+  // `${API}/x` starts with an expression: where it goes is not in the code.
+  if (ts.isTemplateExpression(node)) return node.head.text === '' ? null : node.head.text
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) return urlStart(node.left)
   if (ts.isNewExpression(node) && node.expression.getText() === 'URL' && node.arguments?.length) {
-    // new URL('/x', base) is relative to base; new URL('https://...') is absolute.
-    return urlStart(node.arguments[0])
+    // new URL('/x', base) goes where base points; new URL('https://...') is absolute.
+    const first = urlStart(node.arguments[0])
+    if (first !== null && /^https?:\/\//i.test(first)) return first
+    return node.arguments.length > 1 ? urlStart(node.arguments[1]) : first
   }
   return null
 }

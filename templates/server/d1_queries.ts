@@ -110,13 +110,10 @@ export function routeTemplate(path: string): string {
   return (
     path
       .split('/')
-      .map((part) =>
-        /^\d+$/.test(part) ||
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(part) ||
-        (part.length >= 16 && /\d/.test(part) && /^[\w-]+$/.test(part))
-          ? ':id'
-          : part,
-      )
+      // Only plain lowercase words stay (users, orders, by-date); anything
+      // else (numbers, ids, tokens, e-mails, encoded text, names with capitals)
+      // becomes :id, so the log never carries a value from the path.
+      .map((part) => (part === '' || /^[a-z][a-z_-]{0,31}$/.test(part) ? part : ':id'))
       .join('/')
       .replace(/\/+$/, '') || '/'
   )

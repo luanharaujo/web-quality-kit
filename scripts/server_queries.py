@@ -54,7 +54,9 @@ Config (server-queries.json, paths relative to the repository root):
    (env.X.fetch) and a relative URL are internal. Red, with baseline.fetch.
 """
 import argparse
+import http.client
 import base64
+import collections
 import json
 import os
 import re
@@ -158,13 +160,19 @@ class Server:
         deadline = time.time() + float(srv.get("timeout", 90))
         while time.time() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError(f"the server stopped (exit {self.proc.returncode}): {self.tail()}")
+                self.fail(f"the server stopped (exit {self.proc.returncode})")
             try:
                 get(ready, {}, timeout=5)
                 return
             except (urllib.error.URLError, OSError):
                 time.sleep(0.5)
-        raise RuntimeError(f"the server did not answer {ready}: {self.tail()}")
+        self.fail(f"the server did not answer {ready}")
+
+    def fail(self, why):
+        # Never leave the server running when it did not get ready.
+        text = self.tail()
+        self.stop()
+        raise RuntimeError(f"{why}: {text}")
 
     def tail(self):
         self.log.flush()
@@ -201,23 +209,25 @@ def measure(cfg, root, tmp, server, routes):
             path = r.get("path") or key.split(" ", 1)[1]
             url = server.base + path
             try:
-                # Twice: the first request after a seed may warm a cache.
-                for _ in range(2):
-                    status, h = get(url, {**headers, **r.get("headers", {})})
+                # Twice: the larger count wins, so a cache that answers the
+                # second call cannot hide an N+1 (0 and 0 would pass).
+                calls = [get(url, {**headers, **r.get("headers", {})})[1] for _ in range(2)]
             except urllib.error.HTTPError as e:
                 errors.append(f"{r['route']} with {n} rows: HTTP {e.code}")
                 continue
-            except (urllib.error.URLError, OSError) as e:
+            except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
                 errors.append(f"{r['route']} with {n} rows: {e}")
                 continue
-            value = h.get("x-db-queries")
-            if value is None:
+            values = [h.get("x-db-queries") for h in calls]
+            if None in values:
                 errors.append(f"{r['route']}: no x-db-queries header (is the handler wrapped by withQueryCount, "
                               f"with DB_QUERY_HEADERS=1 in .dev.vars?)")
                 continue
-            counts[r["route"]][n] = int(value)
-            if h.get("x-db-sql"):
-                sql.update(json.loads(base64.b64decode(h["x-db-sql"]).decode()))
+            h = calls[0]
+            for extra in calls:
+                if extra.get("x-db-sql"):
+                    sql.update(json.loads(base64.b64decode(extra["x-db-sql"]).decode()))
+            counts[r["route"]][n] = max(int(v) for v in values)
     return counts, sorted(sql), errors
 
 
@@ -263,7 +273,7 @@ def paging(cfg, root, tmp, server, routes, headers_for):
             try:
                 _, _, data = get(url, {**headers, **r.get("headers", {})}, body=True)
                 items, nxt = page_of(data, r.get("items_field") or p.get("items_field"), fields)
-            except (urllib.error.URLError, OSError, ValueError) as e:
+            except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
                 result[key] = f"{step}: {e}"
                 continue
             if items is None:
@@ -377,6 +387,8 @@ def leaks(root):
 def check(cfg, root):
     out = {"mode": cfg.get("mode", "absolute"), "routes": [], "uncovered": [], "baseline_routes": [],
            "scans": [], "baseline_scans": [], "errors": [], "indexes": bool(cfg.get("migrations")),
+           "measured": {"routes": True, "scans": bool(cfg.get("migrations")), "unpaged": bool(cfg.get("routes")),
+                        "fetch": bool(cfg.get("source"))},
            "unpaged": [], "baseline_unpaged": [], "fetch": [], "baseline_fetch": []}
     err = out["errors"]
     if out["mode"] not in ("absolute", "baseline"):
@@ -408,11 +420,21 @@ def check(cfg, root):
         (out["baseline_routes"] if key in tolerated else out["uncovered"]).append({"route": key, "where": found[key]})
 
     baseline_mode = out["mode"] == "baseline"
+    for d in cfg.get("source", []):
+        if not os.path.exists(os.path.join(root, d)):
+            err.append(f"source: {d} does not exist (a typo would switch the lint rules off)")
     try:
         cases, _ = fetch_cases(cfg, root)
-        known = {(c["file"], c["text"]) for c in base.get("fetch", [])} if baseline_mode else set()
+        # Counted per (file, line text): a second identical call in the same
+        # file is a new case, not covered by the first one's baseline entry.
+        known = collections.Counter((c["file"], c["text"]) for c in base.get("fetch", [])) if baseline_mode else collections.Counter()
         for c in cases:
-            (out["baseline_fetch"] if (c["file"], c["text"]) in known else out["fetch"]).append(c)
+            k = (c["file"], c["text"])
+            if known[k] > 0:
+                known[k] -= 1
+                out["baseline_fetch"].append(c)
+            else:
+                out["fetch"].append(c)
     except (RuntimeError, ValueError) as e:
         err.append(str(e))
 

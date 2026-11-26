@@ -104,7 +104,9 @@ check("good: external calls all have a time limit or stay internal", good["fetch
 check("bad: lists without pagination caught", sorted(u["route"] for u in bad["unpaged"]) == ["GET /customers", "GET /orders"], bad["unpaged"])
 rules = [(c["line"], c["rule"]) for c in bad["fetch"]]
 check("bad: fetch without signal, URL in a variable, globalThis.fetch and a too-long timeout caught",
-      rules == [(3, "fetch-no-timeout"), (4, "fetch-no-timeout"), (5, "fetch-no-timeout"), (6, "fetch-timeout-too-long"), (7, "fetch-no-timeout")], rules)
+      rules[:5] == [(3, "fetch-no-timeout"), (4, "fetch-no-timeout"), (5, "fetch-no-timeout"), (6, "fetch-timeout-too-long"), (7, "fetch-no-timeout")], rules)
+check("bad: a URL built from a variable (`${API}/x`) and new URL('/x', external base) are external",
+      (8, "fetch-no-timeout") in rules and (9, "fetch-no-timeout") in rules, rules)
 loose = sq.check(cfg("bad", fetch_timeout={"max_ms": 60000}), ROOT)
 check("fetch: max_ms is configurable", [c["line"] for c in loose["fetch"] if c["rule"] == "fetch-timeout-too-long"] == [], loose["fetch"])
 rc, out = panel(bad, None, "--lang", "pt")
@@ -115,9 +117,31 @@ fb = cfg("bad", mode="baseline", baseline={"unpaged": ["GET /orders", "GET /cust
          "fetch": [{"file": c["file"], "text": c["text"]} for c in bad["fetch"]]})
 fbr = sq.check(fb, ROOT)
 check("baseline: unpaged routes and old fetch calls tolerated", fbr["unpaged"] == [] and fbr["fetch"] == []
-      and len(fbr["baseline_unpaged"]) == 2 and len(fbr["baseline_fetch"]) == 5, fbr)
+      and len(fbr["baseline_unpaged"]) == 2 and len(fbr["baseline_fetch"]) == 8, fbr)
+one = [{"file": c["file"], "text": c["text"]} for c in bad["fetch"] if c["line"] != 10]
+dup = sq.check(dict(fb, baseline=dict(fb["baseline"], fetch=one)), ROOT)
+check("baseline: a second identical fetch in the same file is a new case", [c["line"] for c in dup["fetch"]] == [10], dup["fetch"])
+twice = dict(fbr, baseline_fetch=fbr["baseline_fetch"] + [fbr["baseline_fetch"][0]])
+check("baseline: one more identical entry than main is red", panel(twice, fbr)[0] == 1)
 grown = dict(fbr, baseline_fetch=fbr["baseline_fetch"] + [{"file": "x.ts", "line": 1, "rule": "fetch-no-timeout", "text": "fetch(u)"}])
 check("baseline: a fetch added to the baseline against main is red", panel(grown, fbr)[0] == 1)
+
+# --- review fixes: cache, missing source, server that never gets ready, check new on main ---
+cached = cfg("bad", routes=[{"route": "GET /orders"}])
+cached["server"] = dict(cached["server"], start=cached["server"]["start"].replace(" bad ", " cached "))
+cr = sq.check(cached, ROOT)
+check("a response cache cannot hide an N+1 (the larger of the two calls counts)", [r["ok"] for r in cr["routes"]] == [False], cr["routes"])
+miss = sq.check(cfg("good", source=["tests/cases/server/handlers_good.mjs", "tests/cases/server/nope"]), ROOT)
+check("a source folder that does not exist is a configuration error", any("nope does not exist" in e for e in miss["errors"]), miss["errors"])
+hang = cfg("good", server={"start": "sleep 31.4", "url": "http://127.0.0.1:{port}", "ready": "/health", "timeout": 2})
+hr = sq.check(hang, ROOT)
+alive = subprocess.run(["pgrep", "-f", "sleep 31.4"], capture_output=True).returncode == 0
+check("a server that never gets ready is an error and is not left running", any("did not answer" in e for e in hr["errors"]) and not alive, hr["errors"])
+new_scan = dict(fixed, measured={"routes": True, "scans": True, "unpaged": False, "fetch": False})
+main_without = dict(new_scan, baseline_scans=[], measured={"routes": True, "scans": False, "unpaged": False, "fetch": False})
+check("a check main never ran is a first measure, not a growing baseline", panel(new_scan, main_without)[0] == 0)
+main_with = dict(main_without, measured=dict(main_without["measured"], scans=True))
+check("the same baseline grown on a main that ran the check is red", panel(new_scan, main_with)[0] == 1)
 
 # --- exemptions ------------------------------------------------------------------
 ex = sq.check(cfg("bad", exempt_tables={"orders": "fixed list of 10 rows"}), ROOT)
