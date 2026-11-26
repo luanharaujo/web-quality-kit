@@ -3,6 +3,10 @@
 #   permissions:
 #     contents: read
 #     pull-requests: write
+# and one run per pull request at a time, so two pushes do not write over each other:
+#   concurrency:
+#     group: preview-${{ github.event.pull_request.number }}
+#     cancel-in-progress: true
 # Replace the all-zero SHA with the release commit, with the version in a comment.
 - name: Preview link at the top of the description
   uses: luanharaujo/web-quality-kit/actions/preview-link@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit

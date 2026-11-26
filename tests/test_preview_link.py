@@ -58,6 +58,14 @@ for fence in ("```", "~~~~"):
 lone = f"{pl.START}\nimportant note\n"
 out = pl.set_link(pl.set_link(lone, B1), B2)
 check("a start marker with no end never swallows text", "important note" in out and "`bbbbbbb`" in out and "`aaaaaaa`" not in out, out)
+for pad in ("    ", "      "):
+    quoted = f"- item\n\n{pad}{pl.START}\n{pad}x\n{pad}{pl.END}\n"
+    out = pl.set_link(quoted, B1)
+    check(f"markers indented by {len(pad)} spaces are text", out.endswith(quoted) and pl.set_link(out, B1) is out, out)
+for lost, name in ((pl.END, "end"), (pl.START, "start")):
+    broken = once.replace(lost + "\n", "")
+    out = pl.set_link(broken, B2)
+    check(f"a deleted {name} marker leaves no stale link", out == pl.set_link(BODY, B2), out)
 check("empty and missing body", pl.set_link("", B1) == pl.set_link(None, B1) == "\n".join(B1) + "\n")
 check("an empty body does not grow", pl.set_link(pl.set_link("", B1), B1) == "\n".join(B1) + "\n")
 
@@ -86,7 +94,7 @@ check("note shown after the link", pl.build_block(URL, SHA1, "sign in by e-mail"
 
 # --- against a fake GitHub API ----------------------------------------------------
 LOG = []
-STATE = {"body": BODY, "sha": SHA1, "get": 200, "patch": 200}
+STATE = {"body": BODY, "sha": SHA1, "get": 200, "patch": 200, "headers": {}}
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -95,7 +103,10 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def reply(self, code, obj):
         data = json.dumps(obj).encode()
-        self.send_response(code); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        self.send_response(code); self.send_header("Content-Length", str(len(data)))
+        for k, v in STATE["headers"].items():
+            self.send_header(k, v)
+        self.end_headers(); self.wfile.write(data)
 
     def do_GET(self):
         self.reply(STATE["get"], {"body": STATE["body"], "head": {"sha": STATE["sha"]}})
@@ -113,14 +124,14 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 API = f"http://127.0.0.1:{srv.server_port}"
 
 
-def run(sha=SHA1, fork=False, user="someone", url=URL, private=False, action=False):
+def run(sha=SHA1, fork=False, user="someone", url=URL, private=False, lang="auto"):
     fd, path = tempfile.mkstemp(suffix=".json")
     with os.fdopen(fd, "w") as f:
         json.dump({"pull_request": {"number": 3, "user": {"login": user},
                                     "head": {"sha": sha, "repo": {"full_name": "other/x" if fork else "o/x"}}},
                    "repository": {"full_name": "o/x", "private": private}}, f)
     env = dict(os.environ, GITHUB_EVENT_PATH=path, GITHUB_API_URL=API, GITHUB_TOKEN="t",
-               PREVIEW_URL=url, PREVIEW_NOTE="", LANG_IN="auto")
+               PREVIEW_URL=url, PREVIEW_NOTE="", LANG_IN=lang)
     return subprocess.run([sys.executable, "-E", os.path.join(S, "preview_link.py")], env=env, capture_output=True, text=True)
 
 
@@ -136,8 +147,17 @@ LOG.clear(); STATE["body"] = BODY
 check("fork: skipped", run(sha=SHA2, fork=True).returncode == 0 and not LOG)
 check("Dependabot: skipped", run(sha=SHA2, user="dependabot[bot]").returncode == 0 and not LOG)
 check("bad URL fails and writes nothing", run(sha=SHA2, url="http://x.example.com").returncode == 1 and not LOG)
+r = run(sha=SHA2, lang="pt-BR")
+check("unknown language fails with a message", r.returncode == 1 and "::error::" in r.stdout and not r.stderr, r.stderr)
 STATE["patch"] = 403
 check("missing permission fails the step", run(sha=SHA2).returncode == 1)
+STATE["headers"] = {"X-RateLimit-Remaining": "0"}
+check("rate limit (403) only warns", run(sha=SHA2).returncode == 0)
+STATE["headers"], STATE["patch"] = {}, 429
+check("rate limit (429) only warns", run(sha=SHA2).returncode == 0)
+STATE["patch"] = 422
+r = run(sha=SHA2)
+check("a refused description fails without blaming the permission", r.returncode == 1 and "pull-requests" not in r.stdout, r.stdout)
 STATE["patch"] = 502
 check("GitHub down only warns", run(sha=SHA2).returncode == 0)
 srv.shutdown()
