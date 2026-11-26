@@ -287,6 +287,10 @@ PT = {}
 LANG = "en"
 
 
+SITE_NOTE = ('{folder} looks like build output ({hits} of {total} names carry a hash) but is not declared: '
+             'add "{folder}" to "cache": {{"hashed_dirs": [...]}} so its cache is checked')
+
+
 def T(text):
     return PT.get(text, text) if LANG == "pt" else text
 
@@ -607,6 +611,8 @@ def compare(a):
                     rows[:] = [r.replace("| 🟡 |", "| 🔴 |", 1).replace(f"| {T('none new')} |", f"| {T('none')} |")
                                if f"| {T(label)} |" in r else r for r in rows]
         for note in sr.get("notes") or []:
+            if isinstance(note, dict):
+                note = T(SITE_NOTE).format(**note)
             details += [f"🟡 {T('Site rules: note')}: {note}", ""]
         if sr.get("excepted"):
             details += [T("Site rules: {n} cases covered by registered exceptions (web-budget.json).").format(
