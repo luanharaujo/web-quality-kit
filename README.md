@@ -82,6 +82,8 @@ export default { fetch: (req, env, ctx) => withQueryCount(req, env, (env) => han
 
 These are rules, not comparisons: they fail on the first run and with `fail-on-worse: "false"`.
 
+**Upgrading the kit in a repository that already runs `server-queries`:** the check requires the app's `d1_queries.ts` to be identical to the kit's, so a new kit version that changes it (1.11.0 does: the route template in the log) is red until the file is copied again. A pull request that only bumps the kit version is not enough: it must also copy `templates/server/d1_queries.ts` and, in baseline mode, list today's cases of any new rule (`baseline.unpaged`, `baseline.fetch` in 1.11.0). Read the cases from the first red run.
+
 The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
 
 ## Use

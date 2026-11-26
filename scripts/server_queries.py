@@ -490,7 +490,10 @@ def check(cfg, root):
         paged_ok = {route_key(k) for k in base.get("unpaged", [])} if baseline_mode else set()
         for key, problem in sorted(pages.items()):
             if problem:
-                (out["baseline_unpaged"] if key in paged_ok else out["unpaged"]).append({"route": key, "problem": problem})
+                # The baseline tolerates a list that does not page yet, never a
+                # route that fails (HTTP error, no list in the response).
+                broken = problem.startswith(("page:", "cap:", "over:")) or problem == "the response has no list"
+                (out["baseline_unpaged"] if key in paged_ok and not broken else out["unpaged"]).append({"route": key, "problem": problem})
         out["measured"]["unpaged"] = True
     except (RuntimeError, KeyError, json.JSONDecodeError) as e:
         err.append(f"server: {e}")

@@ -71,7 +71,10 @@ function isIncomingRequest(node) {
     const owner = ts.isMethodDeclaration(p) ? p.name
       : ts.isPropertyAssignment(p.parent) ? p.parent.name
       : ts.isFunctionDeclaration(p) ? p.name : null
-    if (!owner || owner.getText() !== 'fetch' || p.parameters.length < 2) return false
+    if (!owner || owner.getText() !== 'fetch') return false
+    // export default class extends WorkerEntrypoint { fetch(request) {...} }: env is this.env.
+    if (ts.isMethodDeclaration(p) && ts.isClassLike(p.parent)) return isDefaultClass(p.parent)
+    if (p.parameters.length < 2) return false
     const obj = ts.isMethodDeclaration(p) ? p.parent : ts.isPropertyAssignment(p.parent) ? p.parent.parent : null
     return !!obj && ts.isObjectLiteralExpression(obj) && isDefaultExport(obj)
   }
@@ -84,6 +87,22 @@ const unwrap = (n) => {
   while (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression?.(n) || ts.isTypeAssertionExpression(n))) n = n.expression
   return n
 }
+const RUNTIME_BASES = new Set(['WorkerEntrypoint', 'DurableObject', 'WorkflowEntrypoint'])
+function isDefaultClass(cls) {
+  // A Workers runtime class (entrypoint, Durable Object) gets its requests from the runtime.
+  const bases = (cls.heritageClauses || []).flatMap((h) => h.types.map((t) => t.expression.getText().split('.').pop()))
+  if (bases.some((b) => RUNTIME_BASES.has(b))) return true
+  const mods = ts.canHaveModifiers(cls) ? ts.getModifiers(cls) || [] : []
+  if (mods.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) return true
+  if (ts.isClassExpression(cls)) return isDefaultExport(cls)
+  if (cls.name) {
+    const name = cls.name.text
+    return cls.getSourceFile().statements.some((st) => ts.isExportAssignment(st) && !st.isExportEquals &&
+      ts.isIdentifier(unwrap(st.expression)) && unwrap(st.expression).text === name)
+  }
+  return false
+}
+
 function isDefaultExport(obj) {
   let n = obj
   while (n.parent && (ts.isParenthesizedExpression(n.parent) || ts.isAsExpression(n.parent) ||
@@ -115,15 +134,29 @@ function constValue(n, sf, seen = new Set()) {
   }
   if (ts.isIdentifier(n) && !seen.has(n.text)) {
     seen.add(n.text)
-    let found = null
-    const look = (x) => {
-      if (found !== null) return
-      if (ts.isVariableDeclaration(x) && ts.isIdentifier(x.name) && x.name.text === n.text && x.initializer &&
-          ts.isVariableDeclarationList(x.parent) && (x.parent.flags & ts.NodeFlags.Const)) found = constValue(x.initializer, sf, seen)
-      else ts.forEachChild(x, look)
+    const init = constInit(n)
+    return init ? constValue(init, sf, seen) : null
+  }
+  return null
+}
+
+// The initializer of the `const` an identifier refers to, by scope: the
+// nearest block (or the file) that declares the name. A parameter, a `let`
+// or `var`, or a destructured name shadowing it: null (the value is not in the code).
+const binds = (name, text) => ts.isIdentifier(name) ? name.text === text
+  : name.elements.some((e) => !ts.isOmittedExpression(e) && binds(e.name, text))
+function constInit(id) {
+  for (let p = id.parent; p; p = p.parent) {
+    if (ts.isFunctionLike(p) && p.parameters?.some((q) => binds(q.name, id.text))) return null
+    if (!(ts.isBlock(p) || ts.isSourceFile(p) || ts.isModuleBlock(p))) continue
+    for (const st of p.statements) {
+      if (!ts.isVariableStatement(st)) continue
+      for (const d of st.declarationList.declarations) {
+        if (!binds(d.name, id.text)) continue
+        const isConst = st.declarationList.flags & ts.NodeFlags.Const
+        return isConst && ts.isIdentifier(d.name) && d.initializer ? d.initializer : null
+      }
     }
-    look(sf)
-    return found
   }
   return null
 }
@@ -171,6 +204,11 @@ for (const t of targets) {
            ts.isIdentifier(callee.expression) && ['globalThis', 'self', 'window'].includes(callee.expression.text))
         let [target, init] = node.arguments
         let sig = null
+        if (target && ts.isIdentifier(target) && !isIncomingRequest(target)) {
+          // const r = new Request(url, init); fetch(r): read as fetch(new Request(url, init)).
+          const r = constInit(target)
+          if (r && isNewRequest(unwrap(r))) target = unwrap(r)
+        }
         if (isNewRequest(target)) {
           // fetch(new Request(url, init), init2): the URL is url, a signal may be in either init.
           sig = signalOf(target.arguments[1])

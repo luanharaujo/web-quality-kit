@@ -163,7 +163,7 @@ check("same result against an old main with the same red items fails only for th
 
 # --- pagination: a limit far above the cap, lists that do not page by nature -----
 def uncapped(**over):
-    c = cfg("good", routes=[{"route": "GET /orders"}, {"route": "GET /totals"}, {"route": "GET /strict"}], **over)
+    c = cfg("good", **{"routes": [{"route": "GET /orders"}, {"route": "GET /totals"}, {"route": "GET /strict"}], **over})
     c["server"] = dict(c["server"], start=c["server"]["start"].replace(" good ", " uncapped "))
     return c
 
@@ -205,6 +205,15 @@ rl = [(c["line"], c["rule"]) for c in rq]
 check("fetch: a protocol-relative URL (//host) is external", (13, "fetch-no-timeout") in rl, rq)
 check("fetch: a timeout from a const or a simple expression is checked against the max",
       (15, "fetch-timeout-too-long") in rl and (16, "fetch-timeout-too-long") in rl and 17 not in [c["line"] for c in rq], rq)
+check("fetch: a const resolves by scope; a parameter with the same name is not the const",
+      (18, "fetch-timeout-too-long") in rl and not {19, 21} & {c["line"] for c in rq}, rq)
+check("fetch: a const Request with a relative URL and a signal passes", 22 not in [c["line"] for c in rq], rq)
+check("fetch: a Workers runtime class (WorkerEntrypoint, DurableObject) may forward its request", 23 not in [c["line"] for c in rq], rq)
+wc, _ = sq.fetch_cases(cfg("good", source=["tests/cases/server/worker_class.ts"]), ROOT)
+check("fetch: an export default class may forward its request", wc == [], wc)
+br = sq.check(uncapped(mode="baseline", routes=[{"route": "GET /exact"}], baseline={"unpaged": ["GET /exact"]}), ROOT)
+check("baseline.unpaged tolerates a list that does not page, not a route that fails",
+      [u["route"] for u in br["unpaged"]] == ["GET /exact"] and "HTTP Error 400" in br["unpaged"][0]["problem"], br)
 badbase = sq.check(cfg("bad", mode="baseline", routes=[], baseline={"fetch": ["fetch(u)"]}), ROOT)
 check("a malformed baseline.fetch is a configuration error, not a crash", any("baseline.fetch" in e for e in badbase["errors"]), badbase["errors"])
 check("fetch: a Worker forwarding its incoming request is not flagged", all("return fetch(request)" not in c["text"] for c in rq), rq)

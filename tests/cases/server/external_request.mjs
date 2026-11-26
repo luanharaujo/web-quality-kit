@@ -15,3 +15,9 @@ const MINUTE = 60 * 1000
 const longish = (u) => fetch(u, { signal: AbortSignal.timeout(MINUTE) })
 const inline = (u) => fetch(u, { signal: AbortSignal.timeout(2 * 60_000) })
 const fine = (u) => fetch(u, { signal: AbortSignal.timeout(5 * 1000) })
+function a(u) { const ms = 30000; return fetch(u, { signal: AbortSignal.timeout(ms) }) }
+function b(u) { const ms = 5000; return fetch(u, { signal: AbortSignal.timeout(ms) }) }
+const LIMIT = 5000
+const byParam = (u, LIMIT) => fetch(u, { signal: AbortSignal.timeout(LIMIT) })
+const local = (signal) => { const r = new Request('/local', { signal }); return fetch(r) }
+export class Entry extends WorkerEntrypoint { fetch(request) { return fetch(request) } }
