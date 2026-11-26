@@ -290,6 +290,15 @@
     "name": "Service level objective (slo.json)",
     "means": "The server's written target: share of requests without a server error and how fast 95% of them answer, plus when to warn. The error-budget alert reads this file; an invalid one fails.",
     "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Unused code and dependencies (knip)",
+     "Unused code: configuration"
+    ],
+    "name": "Unused code (knip)",
+    "means": "Files nobody imports, exports nobody uses and dependencies nobody needs, found by knip. Each one is weight to download, review and keep safe.",
+    "rigor": "blocks"
    }
   ],
   "glossary": [
@@ -687,6 +696,16 @@
     ],
     "name": "Meta de serviço (slo.json)",
     "means": "A meta escrita do servidor: parte dos pedidos sem erro do servidor e em quanto tempo 95% deles respondem, mais quando avisar. O alerta de orçamento de erro lê este arquivo; arquivo inválido reprova.",
+    "rigor": "blocks"
+   },
+   {
+    "match": [
+     "Código e dependências sem uso (knip)",
+     "Código sem uso: configuração",
+     "Unused code and dependencies (knip)"
+    ],
+    "name": "Código sem uso (knip)",
+    "means": "Arquivos que ninguém importa, exports que ninguém usa e dependências que ninguém precisa, achados pelo knip. Cada um é peso para baixar, revisar e manter seguro.",
     "rigor": "blocks"
    }
   ],

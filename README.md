@@ -61,6 +61,14 @@ Lighthouse runs as a mid phone on a slow network (`formFactor: mobile`, simulate
 
 Same two modes: `absolute` fails on any case; `baseline` fails on a new case (one main did not have). The limits `img_px` (1600), `img_kb` (300), `font_weights` (2) and `img_eager` (2 images at the top of a page may load eagerly) live in `web-budget.json` `limits`, stricter only. A case that must stay is an exception with `rule` (e.g. `img-format`) and the `files` it covers (globs), plus `reason`, `approved_by`, `date` and ideally `expires`; covered cases are counted apart in the panel. Hashed files are the ones in a folder only a build tool writes (`_astro/`, `_next/static/`, `_app/immutable/`). `assets/` is never guessed, because hand-written sites use it too and a year of immutable cache on a file that keeps its name cannot be undone in a browser: declare `"cache": {"hashed_dirs": ["assets/"]}` when it is a Vite output folder, and the whole folder is checked. An undeclared `assets/` (subfolders included, 2 files or more) where most names look hashed gets a yellow note in the panel: its cache is not checked until it is declared, but its other cases (fonts, images) still count. When a broad `_headers` rule (`/*`) and a specific one (`/_astro/*`) both set `Cache-Control`, the host sends both and a hashed file is judged by the shorter one: put `! Cache-Control` in the specific rule. Single paths go in `"hashed_extra": ["regex"]`; both can only add files to the check. In the kit's build folders the hash in a name is replaced by `[hash]` so a new build does not turn old cases into new ones (a whole 8-letter name made of lower-case words, like `main-app.js`, stays a name). In a declared folder, and in any `assets/` folder, only names that look like a hash are replaced (this is for identity only, it never asks for a cache header), so a name with an unusual hash (e.g. all lowercase, not hex) keeps it and can show up again as a new case after a rebuild.
 
+## Unused code (`knip`)
+
+`knip: absolute` or `knip: baseline` runs [knip](https://knip.dev) (pinned in the kit's tools) on the repo: files nobody imports, exports nobody uses, dependencies nobody needs, and imports of packages missing from `package.json`. Each finding is a case named by file, kind and name, so a line moving does not make it new.
+
+- `absolute` (new repo): any finding fails, from the first run.
+- `baseline` (older repo): a finding main did not have fails; the count never grows. Switch to `absolute` once it reaches zero.
+- The repo's own `knip.json` (or `"knip"` in `package.json`) is used: entry points a plugin cannot see, files to ignore. Ignoring is the registered exception here, in the repo, reviewed in its PR.
+
 ## Database of a server (`server-queries`)
 
 For a Cloudflare Worker with D1 (or any server that can wrap its database the same way). The app copies `templates/server/d1_queries.ts` unchanged and wraps its fetch handler:

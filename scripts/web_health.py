@@ -95,6 +95,33 @@ def eslint_cases(path, root):
     return cases
 
 
+# knip's JSON report: one entry per file, one list per kind of finding.
+KNIP_RULES = {"files": "unused-file", "dependencies": "unused-dependency",
+              "devDependencies": "unused-dev-dependency", "optionalPeerDependencies": "unused-dependency",
+              "exports": "unused-export", "types": "unused-type", "namespaceMembers": "unused-export",
+              "enumMembers": "unused-enum-member", "classMembers": "unused-class-member",
+              "duplicates": "duplicate-export", "unlisted": "unlisted-dependency",
+              "binaries": "unlisted-binary", "unresolved": "unresolved-import"}
+
+
+def knip_cases(path):
+    """One case per finding; identity is (file, rule, name), so a line moving
+    does not make an old finding new."""
+    raw = open(path).read().strip()
+    data = json.loads(raw) if raw else {}
+    cases = []
+    for entry in data.get("issues", []):
+        for kind, rule in KNIP_RULES.items():
+            for item in entry.get(kind) or []:
+                if isinstance(item, list):   # duplicates: a group of names
+                    name = " = ".join(sorted(i.get("name", "") for i in item))
+                    line = min((i.get("line") or 0) for i in item) if item else 0
+                else:
+                    name, line = item.get("name", ""), item.get("line") or 0
+                cases.append({"file": entry.get("file", ""), "rule": rule, "line": line, "text": name})
+    return cases
+
+
 TSC_LINE = re.compile(r"^(.+?)\((\d+),\d+\): error (TS\d+): (.*)$")
 
 
@@ -250,6 +277,12 @@ def collect(a):
         m["server_queries"] = json.load(open(a.server_queries))
     if a.query_loop:
         m["query_loop"] = json.load(open(a.query_loop))
+    if a.knip:
+        try:
+            m["knip"] = knip_cases(a.knip)
+            m["knip_meta"] = {"mode": a.knip_mode, "errors": []}
+        except (ValueError, OSError) as e:
+            m["knip_meta"] = {"mode": a.knip_mode, "errors": [f"knip report unreadable: {e}"]}
     if a.site_rules:
         r = json.load(open(a.site_rules))
         m["site_rules"] = {"mode": r["mode"], "errors": r["errors"], "excepted": len(r.get("excepted", [])),
@@ -326,7 +359,8 @@ CASE_METRICS = [("eslint", "Lint (ESLint)"), ("tsc", "Types (strict tsc)"),
                 ("data", "Personal data or secret in the repository"),
                 ("modern", "Modern web: old code with a native replacement (warning only)"),
                 ("query_loop", "Database query inside a loop (warning only)"),
-                ("cache", "Cache headers"), ("fonts", "Fonts"), ("images", "Images")]
+                ("cache", "Cache headers"), ("fonts", "Fonts"), ("images", "Images"),
+                ("knip", "Unused code and dependencies (knip)")]
 SITE_RULES = ("cache", "fonts", "images")
 WARN_ONLY = {"modern", "query_loop"}
 SERVER_LABELS = {"config": "Database check: configuration",
@@ -680,6 +714,21 @@ def compare(a):
             details += [T("Site rules: {n} cases covered by registered exceptions (web-budget.json).").format(
                 n=sr["excepted"]), ""]
 
+    if "knip_meta" in head:
+        km = head["knip_meta"]
+        if km.get("errors"):
+            row(False, True, T("Unused code: configuration"), str(len(km["errors"])), T("none"), "—")
+            hard_failed.append("knip configuration")
+            failed.append("knip configuration")
+            details += [f"- {e}" for e in km["errors"]] + [""]
+        if km.get("mode") == "absolute" and head.get("knip"):
+            label = dict(CASE_METRICS)["knip"]
+            hard_failed.append(label)
+            if label not in failed:
+                failed.append(label)
+            rows[:] = [r.replace("| 🟡 |", "| 🔴 |", 1).replace(f"| {T('none new')} |", f"| {T('none')} |")
+                       if f"| {T(label)} |" in r else r for r in rows]
+
     if "budget" in head:
         hard, soft = budget_rows(head["budget"], base.get("budget"), first, row, details)
         failed += hard + soft
@@ -785,6 +834,8 @@ def main():
     c.add_argument("--budget", help="budget.py check output")
     c.add_argument("--server-queries", help="server_queries.py check output")
     c.add_argument("--query-loop", help="tools/query_in_loop.mjs output (cases)")
+    c.add_argument("--knip", help="knip --reporter json output")
+    c.add_argument("--knip-mode", choices=["absolute", "baseline"], default="baseline")
     c.add_argument("--site-rules", help="site_rules.py check output")
     c.add_argument("--observability", help="server_observability.py check output")
     c.add_argument("--slo", help="slo.py validate output")
