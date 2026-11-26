@@ -36,6 +36,7 @@ jobs:
           python3 tests/test_data_guard.py
           python3 tests/test_live_check.py
           python3 tests/test_pr_description.py
+          python3 tests/test_preview_link.py
           python3 tests/test_server_queries.py
           python3 tests/test_server_observability.py
           python3 tests/test_slo.py

@@ -351,6 +351,10 @@
     "text": "🟢 fine, 🟡 warning, 🔴 blocks the merge. The bar shows how full the metric is."
    }
   ],
+  "preview": {
+   "open": "Open the preview",
+   "version": "version"
+  },
   "ui": {
    "checks": "Checks",
    "health": "Health",
@@ -759,6 +763,10 @@
     "text": "🟢 ok, 🟡 aviso, 🔴 bloqueia o merge. A barra mostra o quanto a métrica está cheia."
    }
   ],
+  "preview": {
+   "open": "Abrir o preview",
+   "version": "versão"
+  },
   "ui": {
    "checks": "Verificações",
    "health": "Saúde",

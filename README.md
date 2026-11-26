@@ -288,6 +288,17 @@ Keeps the description of every pull request in the standard, without depending o
 
 Copy `templates/pr-description.yml`: event `pull_request` (never `pull_request_target`), `contents: read` + `pull-requests: write`, job `pr-descricao`. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. For the panel, make the job `needs:` the CI job: `web-ci` saves it as the `pr-panel` artifact (`panel-artifact` input; empty = off).
 
+## Preview link (`actions/preview-link`)
+
+In a repository that publishes a preview for each pull request, the link is the **first line of the description**, so the reviewer opens it from the phone without scrolling. Run the action in the job that publishes the preview, after the URL was checked (`templates/preview-link.yml`, `pull-requests: write`):
+
+- The block between `<!-- PREVIEW-LINK -->` and `<!-- /PREVIEW-LINK -->` is rewritten on every push, with the commit it shows, and moved back to the top. The rest of the description is never touched, and the description lint ignores what comes before the first section.
+- `url` must be a plain https URL; `note` is one short line (how to sign in); `lang` follows the repository's visibility.
+- A fork or Dependabot pull request is skipped, a run for an older commit writes nothing, a missing permission fails the step, and GitHub being down only warns.
+- It does not replace the repository's own preview comment.
+
+Proof: `python3 tests/test_preview_link.py`.
+
 ## Interaction checks (`actions/interaction`)
 
 Every action that saves data (a click or a submit that sends POST, PUT,
