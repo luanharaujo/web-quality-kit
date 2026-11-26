@@ -24,6 +24,8 @@ from pr_description import api
 START = "<!-- PREVIEW-LINK -->"
 END = "<!-- /PREVIEW-LINK -->"
 URL_OK = re.compile(r"https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?(/[A-Za-z0-9._~/%?&=#+,:;@!-]*)?")
+# The line build_block writes: what is left of our block if one marker is deleted.
+LINK_LINE = re.compile(r"\*\*\[[^]]*\]\(https://\S+\)\*\* · \S+ `[0-9a-f]{7}`.*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_NOTE = 200
@@ -42,21 +44,35 @@ def build_block(url, sha, note, texts):
 
 
 def own_blocks(lines):
-    """[(first, last)] of our marker blocks. A marker quoted in a fenced code block is
-    text, and a start marker with no end is left alone."""
+    """[(first, last)] of our marker blocks. A marker is a whole line with no indentation;
+    one quoted in a code block is text. A marker that lost its pair is removed only
+    together with our own link line next to it."""
     fence, start, found = None, None, []
+
+    def is_link(i):
+        return 0 <= i < len(lines) and LINK_LINE.fullmatch(lines[i]) is not None
+
     for i, line in enumerate(lines):
         f = FENCE.fullmatch(line)
         if fence:
             if f and f[1].startswith(fence) and not f[2].strip():
                 fence = None
         elif f and not (f[1][0] == "`" and "`" in f[2]):
+            if start is not None and is_link(start + 1):
+                found.append((start, start + 1))
             fence, start = f[1], None
-        elif line.strip() == START:
+        elif line.rstrip() == START:
+            if start is not None and is_link(start + 1):
+                found.append((start, start + 1))
             start = i
-        elif line.strip() == END and start is not None:
-            found.append((start, i))
-            start = None
+        elif line.rstrip() == END:
+            if start is not None:
+                found.append((start, i))
+                start = None
+            elif is_link(i - 1):
+                found.append((i - 1, i))
+    if start is not None and is_link(start + 1):
+        found.append((start, start + 1))
     return found
 
 
@@ -90,7 +106,10 @@ def run(env, event, apiurl):
     if lang == "auto":
         lang = "pt" if (event.get("repository") or {}).get("private") else "en"
     with open(os.path.join(HERE, "pr_texts.json"), encoding="utf-8") as f:
-        texts = json.load(f)[lang]["preview"]
+        all_texts = json.load(f)
+    if lang not in all_texts:
+        print("::error::`lang` must be pt, en or auto."); return 1
+    texts = all_texts[lang]["preview"]
     try:
         block = build_block(env.get("PREVIEW_URL", ""), head.get("sha", ""), env.get("PREVIEW_NOTE", ""), texts)
     except ValueError as e:
@@ -108,9 +127,13 @@ def run(env, event, apiurl):
             print("the description already starts with this preview link"); return 0
         api("PATCH", url, token, {"body": new})
     except urllib.error.HTTPError as e:
-        if e.code >= 500:
+        limited = e.code == 429 or (e.code == 403 and (
+            e.headers.get("Retry-After") or e.headers.get("X-RateLimit-Remaining") == "0"))
+        if e.code >= 500 or limited:
             print(f"::warning::Preview link not written: GitHub answered HTTP {e.code}."); return 0
-        print(f"::error::Preview link not written (HTTP {e.code}). The job needs `pull-requests: write`.")
+        why = {422: "GitHub refused the new description (too long?)"}.get(
+            e.code, "the job needs `pull-requests: write`")
+        print(f"::error::Preview link not written (HTTP {e.code}): {why}.")
         return 1
     except OSError as e:
         print(f"::warning::Preview link not written: could not reach the GitHub API ({e})."); return 0
