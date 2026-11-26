@@ -154,18 +154,40 @@
   k.loadHow = '';
   const LOAD_REGION = '[role=status],[aria-live]:not([aria-live=off])';
   const signal = (how) => { k.loadAt = now(); k.loadHow = how; };
+  const LOAD_SHOWN = '[role=status],[aria-live]:not([aria-live=off]),[role=progressbar],progress';
+  const HIDING_CLASS = /(^|[\s_-])(hidden|d-none|invisible|collapsed?)($|[\s_-])/;
+  const wasHidden = (m, t) => {
+    const old = m.oldValue || '';
+    if (m.attributeName === 'hidden') return m.oldValue !== null && !t.hasAttribute('hidden');
+    if (m.attributeName === 'style') return /display\s*:\s*none|visibility\s*:\s*hidden/.test(old) && !/display\s*:\s*none|visibility\s*:\s*hidden/.test(t.getAttribute('style') || '');
+    if (m.attributeName === 'class') return HIDING_CLASS.test(old) && !HIDING_CLASS.test(t.getAttribute('class') || '');
+    return false;
+  };
+  const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
   const onMutations = (list) => {
     for (const m of list) {
       const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
       if (!t) continue;
-      if (m.type === 'attributes' && m.attributeName === 'aria-busy' && t.getAttribute('aria-busy') === 'true') { signal('aria-busy'); return; }
+      if (m.type === 'attributes' && m.attributeName === 'aria-busy') {
+        if (t.getAttribute('aria-busy') === 'true') { signal('aria-busy'); return; }
+        continue;
+      }
+      // A progress bar or a status with text that was hidden and is shown now
+      // (hidden attribute removed, display:none dropped, a hiding class gone).
+      if (m.type === 'attributes') {
+        if (!wasHidden(m, t)) continue;
+        const shown = [t, ...t.querySelectorAll(LOAD_SHOWN)].find((el) => el.matches(LOAD_SHOWN) && visible(el) && (el.matches('progress,[role=progressbar]') || el.textContent.trim()));
+        if (shown) { signal(`shown: ${shown.getAttribute('role') || shown.tagName.toLowerCase()}`); return; }
+        continue;
+      }
       // While the HTML is still being parsed, new nodes are the page's own
       // markup (a status that is always there), not a loading signal.
       if (document.readyState === 'loading') continue;
       if (m.type === 'childList') {
         for (const n of m.addedNodes) {
           if (n.nodeType !== 1) continue;
-          if (n.matches('[aria-busy=true],[role=progressbar],progress') || n.querySelector('[aria-busy=true],[role=progressbar],progress')) { signal('added: busy region or progress bar'); return; }
+          const found = [n, ...n.querySelectorAll('[aria-busy=true],[role=progressbar],progress')].find((el) => el.matches('[aria-busy=true],[role=progressbar],progress') && (el.matches('[aria-busy=true]') || visible(el)));
+          if (found) { signal('added: busy region or visible progress bar'); return; }
         }
       }
       const region = t.closest && t.closest(LOAD_REGION);
@@ -175,7 +197,7 @@
   // Observing the document itself works before <html> exists, so the first
   // render's signals are seen too.
   new MutationObserver(onMutations).observe(document, {
-    attributes: true, attributeFilter: ['aria-busy'], childList: true, subtree: true, characterData: true,
+    attributes: true, attributeOldValue: true, attributeFilter: ['aria-busy', 'hidden', 'class', 'style'], childList: true, subtree: true, characterData: true,
   });
 
   k.loadingSince = (t) => {

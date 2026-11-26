@@ -4,10 +4,12 @@
 <body>
 <!-- ?v= list-good | list-dup | list-noload | list-search (bad, one rule each)
      list-readonly | list-prefilled | list-filter | list-excluded | list-poll (good: no false alarm)
-     list-static (bad: a status that was always there is not a loading state) -->
+     list-static (bad: a status that was always there is not a loading state)
+     list-hidden (good: a progress bar in the markup, shown while loading) -->
 <label>Search <input type="search" id="q"></label>
 <label>Level <select id="level"><option value="a">All</option><option value="b">Beginner</option></select></label>
 <section id="results" aria-label="Classes"></section>
+<progress id="bar" hidden aria-label="Loading classes"></progress>
 <p role="status" id="status"></p>
 <p role="status" id="online">Online</p>
 <script>
@@ -24,6 +26,7 @@ if (v === 'list-readonly') {
 }
 if (v === 'list-prefilled') q.value = 'abc';
 const loading = (on) => {
+  if (v === 'list-hidden') { document.getElementById('bar').hidden = !on; return; }
   if (v === 'list-noload' || v === 'list-static') return; // nothing new says "loading"
   results.setAttribute('aria-busy', String(on));
   status.textContent = on ? 'Loading classes...' : '';

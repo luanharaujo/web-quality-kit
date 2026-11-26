@@ -23,14 +23,14 @@ function failures(entries, type) {
 
 const EXPECTED = {
   slow: {
-    good: [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
+    good: [], 'good-reads': [], 'bad-busy': ['busy'], 'bad-double': ['double'], 'bad-optimistic': ['optimistic'], 'bad-error': [],
     'upload-good': [], 'upload-bad': ['upload-confirm', 'upload-dropzone', 'upload-progress'],
     'list-good': [], 'list-dup': ['read-duplicate'], 'list-noload': ['loading-state'], 'list-search': ['debounce'],
-    'list-readonly': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'],
+    'list-readonly': [], 'list-hidden': [], 'list-prefilled': [], 'list-filter': [], 'list-poll': [], 'list-static': ['loading-state'],
     'list-excluded': null, // excluded: must never be checked
   },
   fail: {
-    good: [], 'bad-busy': [], 'bad-double': [], 'bad-optimistic': [], 'bad-error': ['error-keeps-input', 'error-retry'],
+    good: [], 'good-reads': [], 'bad-busy': [], 'bad-double': [], 'bad-optimistic': [], 'bad-error': ['error-keeps-input', 'error-retry'],
     'upload-good': [], 'upload-bad': ['error-alert', 'error-retry', 'upload-independent'],
   },
   contract: { good: [], 'bad-double': ['contract'] },
@@ -44,7 +44,7 @@ const got = { slow: failures(slow, 'check'), fail: failures(fail, 'check'), cont
 // The good pages must have been through every check (a check that never ran
 // proves nothing).
 const RAN = {
-  slow: { good: ['busy', 'double', 'optimistic'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
+  slow: { good: ['busy', 'double', 'optimistic'], 'good-reads': ['busy', 'double', 'optimistic'], 'list-hidden': ['loading-state'], 'upload-good': ['upload-confirm', 'upload-dropzone', 'upload-progress'], 'list-good': ['debounce', 'loading-state'], 'list-prefilled': ['debounce'], 'list-poll': ['debounce'] },
   fail: { good: ['error-alert', 'error-keeps-input', 'error-retry', 'error-retry-sends'], 'upload-good': ['upload-independent'] },
 };
 const ran = (entries, p) => new Set(entries.filter((e) => e.type === 'check' && page(e.route) === p).map((e) => e.check));
