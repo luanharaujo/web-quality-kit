@@ -2,7 +2,8 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>Booking demo</title></head>
 <body>
-<!-- ?v=good | good-reads (two slow reads, then the write) | bad-busy | bad-double | bad-optimistic | bad-error -->
+<!-- ?v=good | good-reads (two slow reads, then the write) | good-key (reads, then a write guarded only by its Idempotency-Key)
+     | good-bg (a draft saved in the background 2.5 s after the tap) | bad-busy | bad-double | bad-optimistic | bad-error -->
 <form id="f">
   <label>Name <input name="name" id="name"></label>
   <button type="submit" id="go">Book</button>
@@ -20,7 +21,7 @@ let busy = false;
 
 function setBusy(on) {
   if (v === 'bad-busy') return;            // nothing shows the tap was taken
-  if (v === 'bad-double') {                // text only, the button keeps working
+  if (v === 'bad-double' || v === 'good-key') { // text only, the button keeps working
     if (on) status.textContent = 'Booking your slot...';
     return;
   }
@@ -30,7 +31,7 @@ function setBusy(on) {
 }
 
 async function book() {
-  if (busy && v !== 'bad-double') return;
+  if (busy && v !== 'bad-double' && v !== 'good-key') return;
   busy = true;
   err.innerHTML = '';
   setBusy(true);
@@ -38,7 +39,7 @@ async function book() {
   const headers = { 'content-type': 'application/json' };
   if (key) headers['Idempotency-Key'] = key;
   try {
-    if (v === 'good-reads') { // look up the slot first: the write leaves well after the tap
+    if (v === 'good-reads' || v === 'good-key') { // look up the slot first: the write leaves well after the tap
       await fetch(`/api/${v}/slots`);
       await fetch(`/api/${v}/slots?day=2`);
     }
@@ -60,7 +61,14 @@ async function book() {
     setBusy(false);
   }
 }
-form.addEventListener('submit', (e) => { e.preventDefault(); book(); });
+let tapAt = 0;
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  tapAt = tapAt || performance.now();
+  // good-bg: a draft saved with no screen change, well after the tap
+  if (v === 'good-bg') setTimeout(() => fetch('/api/good-bg/drafts', { method: 'POST', body: '{}' }), 2500);
+  book();
+});
 </script>
 </body>
 </html>

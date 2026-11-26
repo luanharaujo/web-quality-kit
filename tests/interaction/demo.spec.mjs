@@ -3,7 +3,7 @@
 // breaks); the good pages must pass everything.
 import { test, expect, expectIdempotent } from 'web-quality-kit-interaction';
 
-const bookings = ['good', 'good-reads', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error'];
+const bookings = ['good', 'good-reads', 'good-key', 'good-bg', 'bad-busy', 'bad-double', 'bad-optimistic', 'bad-error'];
 
 for (const v of bookings) {
   test(`booking ${v}`, async ({ page }) => {
@@ -31,6 +31,17 @@ for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search', 'list-re
     await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
   });
 }
+
+// The test answers the read itself, after a wait: the loading signal shown
+// when the read left must still count.
+test('list list-mocked (slow route handler in the test)', async ({ page }) => {
+  await page.route('**/api/list-mocked/items*', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.fulfill({ json: ['Handstand basics', 'Partner balance'] });
+  });
+  await page.goto('/list.html?v=list-mocked');
+  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+});
 
 test('list list-filter (A, B, A again is three actions)', async ({ page }) => {
   await page.goto('/list.html?v=list-filter');

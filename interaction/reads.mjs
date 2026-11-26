@@ -12,8 +12,11 @@
 //                   (type=search, role=searchbox or combobox) gets a 7-letter
 //                   word typed; more than 2 reads carrying the typed text fail
 //
-// Only reads to the app itself count (same host, or the loopback API in
-// tests): analytics, maps and other third parties are ignored.
+// Only reads to the app itself count (same host, a subdomain of it, the
+// loopback API in tests, or a host listed in "api_hosts"): analytics, maps and
+// other third parties are ignored.
+// Reads that start inside a tap's window keep that window open when they end,
+// so a write that waits for them is still that tap's (see chained()).
 // KIT_INTERACTION_READS=warn (default) records these as warnings: the panel
 // shows them, nothing fails. "enforce" makes them count like the other checks.
 import { routeKey, keyMatches } from './routes.mjs';
@@ -22,6 +25,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WORD = 'workout';
 const SEARCH = 'input[type=search],[role=searchbox],[role=combobox]';
 const DUPLICATE_WINDOW_MS = 3000;
+const CHAIN_MAX_MS = 10000; // reads extend a tap's window, never past this
+const DEBOUNCE_NEEDS_MS = 8000; // time left in the test before typing in a field
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 // Page evaluate with a time limit: a synchronous XHR blocks the page.
@@ -59,6 +64,10 @@ export class Reads {
     this.last = new Map(); // id -> { at, failed }
     this.flagged = new Set();
     this.typing = null;
+    this.actionAt = 0; // last tap or typed value (Node clock)
+    this.activeUntil = 0; // end of the last read that tap started
+    this.inflight = new Set(); // reads that tap started, not answered yet
+    this.started = Date.now();
     this.enforce = (process.env.KIT_INTERACTION_READS || 'warn') === 'enforce';
   }
 
@@ -77,12 +86,26 @@ export class Reads {
       const host = new URL(request.url()).hostname;
       if (host === page) return true;
       if (LOOPBACK.has(host) && LOOPBACK.has(page)) return true;
-      const site = (h) => h.split('.').slice(-2).join('.');
-      return site(host) === site(page); // api.example.com for www.example.com
+      if ((this.o.cfg.api_hosts || []).includes(host)) return true;
+      // a subdomain of the page (api.app.example.com.br for app.example.com.br),
+      // or of the site behind www (api.example.com for www.example.com)
+      const base = page.startsWith('www.') ? page.slice(4) : page;
+      return base.includes('.') && (host === base || host.endsWith(`.${base}`));
     } catch {
       return false;
     }
   }
+
+  // True while a write still belongs to the last tap: within the window of
+  // the tap itself, or of the end of a read that tap started.
+  chained() {
+    const { userWindowMs } = this.o.cfg;
+    if (!this.actionAt || Date.now() - this.actionAt > CHAIN_MAX_MS) return false;
+    // A write right as a read ends can reach us before that read's end does.
+    if (this.inflight.size) return true;
+    return this.activeUntil > this.actionAt && Date.now() - this.activeUntil <= userWindowMs;
+  }
+
 
   skipped(key) {
     return listed(this.o.cfg.exclude, key);
@@ -91,11 +114,15 @@ export class Reads {
   async install() {
     const { page } = this.o;
     // Each tap, submit, typed or chosen value starts a new "action" (probe.js).
-    await page.exposeBinding('__kitAction', () => { this.epoch++; });
+    await page.exposeBinding('__kitAction', () => { this.newAction(); this.actionAt = Date.now(); this.activeUntil = 0; this.inflight.clear(); });
     page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) this.epoch++; });
     page.on('request', (request) => this.onRequest(request));
     page.on('requestfinished', (request) => this.settled(request, false));
     page.on('requestfailed', (request) => this.settled(request, true));
+  }
+
+  newAction() {
+    this.epoch++;
   }
 
   id(request) {
@@ -104,6 +131,7 @@ export class Reads {
 
   settled(request, failed) {
     if (!Reads.isRead(request)) return;
+    if (this.inflight.delete(request)) this.activeUntil = Date.now(); // the tap is still working: its write may follow
     const entry = this.last.get(request._kitId);
     if (!entry) return;
     if (failed) entry.failed = true;
@@ -111,7 +139,17 @@ export class Reads {
   }
 
   onRequest(request) {
-    if (!Reads.isRead(request) || this.o.opts.mode !== 'slow' || !this.ours(request)) return;
+    if (!Reads.isRead(request) || !this.ours(request)) return;
+    const now = Date.now();
+    // Started by the last tap: at most 100 ms before the tap reached us (its
+    // notice and the request race), and within the window of the tap, of the
+    // end of a read it started, or while one is still out.
+    const from = this.actionAt;
+    if (from && now >= from - 100 && now - from <= CHAIN_MAX_MS
+        && (this.inflight.size || now - Math.max(from, this.activeUntil) <= this.o.cfg.userWindowMs)) {
+      this.inflight.add(request);
+    }
+    if (this.o.opts.mode !== 'slow') return;
     const key = routeKey('GET', request.url());
     if (this.typing) {
       if (carried(request).some((v) => v && WORD.startsWith(v))) {
@@ -124,7 +162,6 @@ export class Reads {
     const id = this.id(request);
     request._kitId = id;
     const before = this.last.get(id);
-    const now = Date.now();
     this.last.set(id, { at: now, failed: false });
     // A retry after a failed read, or a refresh long after, is not a duplicate.
     if (!before || before.failed || now - before.at > DUPLICATE_WINDOW_MS) return;
@@ -138,15 +175,20 @@ export class Reads {
   async check(route, request, proceed) {
     const { page, cfg } = this.o;
     const key = routeKey('GET', request.url());
+    // The page clock when the read left, taken before the test's own route
+    // handler runs (it may wait before answering).
+    const left = Date.now();
     await proceed();
     if (this.o.opts.mode !== 'slow' || this.typing || !this.ours(request) || listed(cfg.no_loading_state, key) || this.skipped(key)) return;
-    const since = await evaluate(page, () => performance.now());
-    if (since === null || !this.o.claim('read', key)) return; // page blocked or gone: nothing to judge
-    const started = Date.now();
+    if (!this.o.claim('read', key)) return;
+    // Look at least once: a slow route handler may already be past the window,
+    // and the signals are kept with their times.
     let how = '';
-    while (!how && Date.now() - started <= cfg.busyWithinMs) {
-      how = (await evaluate(page, (t) => (window.__kit ? window.__kit.loadingSince(t) : ''), since)) || '';
-      if (!how) await sleep(40);
+    for (;;) {
+      how = (await evaluate(page, ([t, w]) => (window.__kit ? window.__kit.loadingSince(t, w) : ''), [left, cfg.busyWithinMs])) || '';
+      // Keep looking a little longer when the page is slow to answer us.
+      if (how || Date.now() - left > cfg.busyWithinMs + 1000) break;
+      await sleep(40);
     }
     if (how) this.o.pass(key, 'loading-state', how);
     else this.problem(key, 'loading-state', `nothing new showed the page was loading within ${cfg.busyWithinMs} ms (turn on aria-busy on the region, or put text in a role=status, or show a progress bar); a blank or frozen screen looks broken`);
@@ -156,9 +198,13 @@ export class Reads {
   async debounce() {
     const { page } = this.o;
     if (this.o.opts.mode !== 'slow' || page.isClosed()) return;
+    // Typing takes about 3 s a field and counts in the test's time: never let
+    // it be what makes a test time out.
+    const timeLeft = () => (this.o.testInfo.timeout ? this.o.testInfo.timeout - (Date.now() - this.started) : Infinity);
     let fields = [];
     try { fields = await page.locator(SEARCH).filter({ visible: true }).all(); } catch { return; }
     for (const field of fields) {
+      if (timeLeft() < DEBOUNCE_NEEDS_MS) return;
       let name = '';
       try {
         if (!(await field.isEditable({ timeout: 500 }))) continue; // readonly or disabled
