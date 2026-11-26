@@ -16,6 +16,7 @@ plan.json: {"current", "target", "security", "newer_lts", "files": [{"path",
 "old", "new"}]}; "files" is empty when no pin needs a change.
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -53,7 +54,10 @@ def pins(repo):
     pkg = os.path.join(repo, "package.json")
     if os.path.isfile(pkg):
         try:
-            node = (json.load(open(pkg)).get("engines") or {}).get("node", "")
+            data = json.load(open(pkg))
+            engines = data.get("engines") if isinstance(data, dict) else None
+            # Old-style engines (a list) or a package.json that is not an object: no pin there.
+            node = engines.get("node", "") if isinstance(engines, dict) else ""
         except ValueError:
             node = ""
         m = ENGINE.match(str(node).strip())
@@ -64,38 +68,42 @@ def pins(repo):
 
 
 ALIAS = "alias"
+COOLDOWN_DAYS = 7   # like the kit's Dependabot: a release waits a week, unless it is a security patch
 
 
 def runtime_major(repo):
-    """The major written in .node-version or .nvmrc ("22", "v22.11.0");
-    ALIAS when the file names an alias (lts/*, node): the runtime floats and
-    no engines pin can be tied to it; None when there is no version file."""
+    """The major written in .node-version or .nvmrc as an exact version;
+    ALIAS when the file floats (an alias like lts/*, or a major alone like
+    "22"): then no engines pin is tied to it and the floor is left alone;
+    None when there is no version file."""
     seen = False
     for name in (".node-version", ".nvmrc"):
         path = os.path.join(repo, name)
         if os.path.isfile(path):
             seen = True
-            m = re.match(r"^v?(\d+)(?:\.|$)", open(path).read().strip())
+            m = EXACT.match(open(path).read().strip())
             if m:
-                return int(m.group(1))
+                return int(m.group(2))
     return ALIAS if seen else None
 
 
-def plan(repo, index):
+def plan(repo, index, today=None):
     found = pins(repo)
     result = {"current": None, "target": None, "security": False, "newer_lts": None, "files": []}
     if not found:
         return result
-    # The line the repo runs on: the major of its version file, even when
-    # that file floats ("22"); else the newest engines pin. Pins of another
+    # The line the repo runs on: the major of the exact version in its version
+    # file; when that file floats (lts/*, "22") nothing changes. Pins of another
     # major (engines "^18.17.0" next to .nvmrc 22) say what else is supported;
-    # changing them is a decision, so they are left alone.
+    # changing them is a decision, so they are left alone. With a version file,
+    # an engines "^"/"~" is a support floor, not the runtime: it stays too.
     major = runtime_major(repo)
     if major == ALIAS:
-        return result   # the runtime follows an alias: engines is the supported floor, left alone
+        return result
     if major is None:
-        major = max(p[3] for p in found)[0]
-    line = [p for p in found if p[3][0] == major]
+        line = [p for p in found if p[3][0] == max(q[3] for q in found)[0]]
+    else:
+        line = [p for p in found if p[3][0] == major and (p[4] == "file" or not p[2].lstrip("v"))]
     if not line:
         return result
     # The most behind pin decides: .nvmrc 22.21.1 next to .node-version
@@ -106,7 +114,20 @@ def plan(repo, index):
     same = [(v, r) for v, r in releases if v[0] == current[0]]
     if not same or not any(r.get("lts") for _, r in same):
         return result   # not an LTS line: no automatic update
-    lts_same = [(v, r) for v, r in same if r.get("lts")]
+    today = today or datetime.date.today()
+    ripe = today - datetime.timedelta(days=COOLDOWN_DAYS)
+
+    def ready(v, r):
+        # A week old, or a security release that is only a patch of the pinned minor.
+        try:
+            old_enough = datetime.date.fromisoformat(str(r.get("date", ""))[:10]) <= ripe
+        except ValueError:
+            old_enough = False
+        return old_enough or (r.get("security") and v[:2] == current[:2])
+
+    lts_same = [(v, r) for v, r in same if r.get("lts") and ready(v, r)]
+    if not lts_same:
+        return result
     target = max(v for v, _ in lts_same)
     lts_majors = sorted({v[0] for v, r in releases if r.get("lts")})
     if lts_majors and lts_majors[-1] > current[0]:
@@ -157,6 +178,7 @@ def main():
     pp = sub.add_parser("plan")
     pp.add_argument("repo")
     pp.add_argument("--index", default=INDEX_URL)
+    pp.add_argument("--today", help="YYYY-MM-DD (tests)")
     pa = sub.add_parser("apply")
     pa.add_argument("repo")
     pa.add_argument("plan")
@@ -168,7 +190,8 @@ def main():
         print(body(json.load(open(a.plan)), a.lang), end="")
         return 0
     if a.cmd == "plan":
-        print(json.dumps(plan(a.repo, load_index(a.index)), indent=1))
+        today = datetime.date.fromisoformat(a.today) if a.today else None
+        print(json.dumps(plan(a.repo, load_index(a.index), today), indent=1))
         return 0
     return apply(a.repo, json.load(open(a.plan)))
 

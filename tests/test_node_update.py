@@ -14,16 +14,16 @@ FAILS = []
 
 # The shape of https://nodejs.org/dist/index.json (newest first), trimmed.
 INDEX = [
-    {"version": "v25.2.0", "lts": False, "security": False},
-    {"version": "v24.11.1", "lts": "Krypton", "security": False},
-    {"version": "v24.11.0", "lts": "Krypton", "security": False},
-    {"version": "v24.10.0", "lts": False, "security": False},
-    {"version": "v22.21.1", "lts": "Jod", "security": False},
-    {"version": "v22.21.0", "lts": "Jod", "security": True},
-    {"version": "v22.20.0", "lts": "Jod", "security": False},
-    {"version": "v22.0.0", "lts": False, "security": False},
-    {"version": "v23.11.0", "lts": False, "security": False},
-    {"version": "v20.19.5", "lts": "Iron", "security": False},
+    {"version": "v25.2.0", "lts": False, "security": False, "date": "2026-10-01"},
+    {"version": "v24.11.1", "lts": "Krypton", "security": False, "date": "2026-10-01"},
+    {"version": "v24.11.0", "lts": "Krypton", "security": False, "date": "2026-10-01"},
+    {"version": "v24.10.0", "lts": False, "security": False, "date": "2026-10-01"},
+    {"version": "v22.21.1", "lts": "Jod", "security": False, "date": "2026-10-01"},
+    {"version": "v22.21.0", "lts": "Jod", "security": True, "date": "2026-10-01"},
+    {"version": "v22.20.0", "lts": "Jod", "security": False, "date": "2026-10-01"},
+    {"version": "v22.0.0", "lts": False, "security": False, "date": "2026-10-01"},
+    {"version": "v23.11.0", "lts": False, "security": False, "date": "2026-10-01"},
+    {"version": "v20.19.5", "lts": "Iron", "security": False, "date": "2026-10-01"},
 ]
 
 
@@ -41,10 +41,11 @@ def repo(files):
     return d
 
 
-def plan(d):
+def plan(d, index=None):
     idx = os.path.join(tempfile.mkdtemp(), "index.json")
-    json.dump(INDEX, open(idx, "w"))
-    r = subprocess.run([sys.executable, SCRIPT, "plan", d, "--index", idx], capture_output=True, text=True)
+    json.dump(index or INDEX, open(idx, "w"))
+    r = subprocess.run([sys.executable, SCRIPT, "plan", d, "--index", idx, "--today", "2026-11-26"],
+                       capture_output=True, text=True)
     if r.returncode:
         print(r.stderr)
     return json.loads(r.stdout)
@@ -71,7 +72,7 @@ expect("after apply, no pin needs a change", plan(d)["files"] == [], plan(d))
 p = plan(repo({".nvmrc": "22.20.0\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
 expect("a pin of another major (engines ^18) is left alone", [f["path"] for f in p["files"]] == [".nvmrc"], p)
 p = plan(repo({".nvmrc": "22\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
-expect("a floating .nvmrc 22 still names the line: engines ^18 is left alone", p["files"] == [], p)
+expect("a floating .nvmrc 22: engines ^18 is left alone", p["files"] == [], p)
 p = plan(repo({".nvmrc": "22.21.1\n", ".node-version": "22.20.0\n"}))
 expect("the most behind pin of the line decides", [f["path"] for f in p["files"]] == [".node-version"]
        and p["current"] == "22.20.0", p)
@@ -82,6 +83,23 @@ json.dump(plan(d), open(pf, "w"))
 subprocess.run([sys.executable, SCRIPT, "apply", d, pf], check=True)
 expect("CRLF files keep CRLF", open(os.path.join(d, "package.json"), newline="").read()
        == '{\r\n  "engines": {"node": "22.21.1"}\r\n}\r\n' and open(os.path.join(d, ".nvmrc"), newline="").read() == "22.21.1\r\n", "")
+fresh = [{"version": "v22.22.0", "lts": "Jod", "security": False, "date": "2026-11-24"}] + INDEX
+p = plan(repo({".nvmrc": "22.20.0\n"}), fresh)
+expect("a release younger than 7 days waits (the older one is proposed)", p["target"] == "22.21.1", p)
+patch = [{"version": "v22.20.1", "lts": "Jod", "security": True, "date": "2026-11-25"}] + [
+    r for r in INDEX if not r["version"].startswith("v22.2")]
+p = plan(repo({".nvmrc": "22.20.0\n"}), patch)
+expect("a fresh security patch of the pinned minor does not wait", p["target"] == "22.20.1" and p["security"], p)
+minor = [{"version": "v22.22.0", "lts": "Jod", "security": True, "date": "2026-11-25"}] + [
+    r for r in INDEX if not r["version"].startswith("v22.2")]
+p = plan(repo({".nvmrc": "22.20.0\n"}), minor)
+expect("a fresh security minor still waits (only a patch skips the week)", p["files"] == [], p)
+p = plan(repo({".nvmrc": "22\n", "package.json": '{"engines": {"node": "^22.12.0"}}'}))
+expect("a floating .nvmrc (major alone) leaves the engines floor alone", p["files"] == [], p)
+p = plan(repo({".nvmrc": "22.20.0\n", "package.json": '{"engines": ["node >= 18"]}'}))
+expect("old-style engines (a list) does not stop the .nvmrc update", [f["path"] for f in p["files"]] == [".nvmrc"], p)
+p = plan(repo({".nvmrc": "22.20.0\n", "package.json": '[1, 2]'}))
+expect("a package.json that is not an object is ignored", [f["path"] for f in p["files"]] == [".nvmrc"], p)
 p = plan(repo({".nvmrc": "22\n"}))
 expect("a major alone already floats: nothing changes", p["files"] == [] and p["current"] is None, p)
 p = plan(repo({".nvmrc": "lts/*\n", "package.json": '{"engines": {"node": "^18.17.0"}}'}))
@@ -90,6 +108,11 @@ p = plan(repo({".nvmrc": "lts/*\n"}))
 expect("an alias already floats: nothing changes", p["files"] == [], p)
 p = plan(repo({"package.json": '{"engines": {"node": ">=20"}}'}))
 expect("a range is left alone", p["files"] == [], p)
+sec = [{"version": "v22.22.1", "lts": "Jod", "security": True, "date": "2026-11-25"},
+       {"version": "v22.22.0", "lts": "Jod", "security": False, "date": "2026-10-01"}] + INDEX
+p = plan(repo({".nvmrc": "22.22.0\n", "package.json": '{"engines": {"node": "^22.0.0"}}'}), sec)
+expect("an old engines floor does not count as the running version", p["current"] == "22.22.0"
+       and p["target"] == "22.22.1" and [f["path"] for f in p["files"]] == [".nvmrc"], p)
 p = plan(repo({"package.json": '{"engines": {"node": "^22.20.0"}}'}))
 expect("^ and ~ keep their operator", p["files"] and p["files"][0]["new"] == "^22.21.1", p)
 p = plan(repo({".node-version": "23.5.0"}))

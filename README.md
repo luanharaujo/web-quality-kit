@@ -151,10 +151,11 @@ A job after the deploy checks that each page answers 200 and is byte for byte th
 Copy `templates/node-update.yml`. Once a week it reads nodejs.org's own release list and, when the LTS line the repo pins has a newer patch or minor, opens a pull request that changes only that number in `.node-version`, `.nvmrc` and `package.json` `engines.node` (exact, `^` or `~`). No Renovate, no other service.
 
 - Never a new major: a newer LTS is only reported in the PR and in the run. Moving to it is a decision.
+- A release waits 7 days, like the kit's Dependabot; a security release skips the wait only when it is a patch of the pinned minor.
 - A major alone (`22`), an alias (`lts/*`) or a range (`>=20`) already floats: nothing changes.
 - The PR is opened by a GitHub App made only for this: contents and pull-requests write, no ruleset bypass. An App that can bypass the main rules must never have its key in a repo secret. Its token is the `token` input and its slug the `app-slug` input; the run stops before any call when that slug is in `refused-apps` (the Apps with bypass, from a variable). Because an App opens it, the repo's CI runs on the PR, and its commits are made through the API, signed by GitHub. A PR opened with the default `GITHUB_TOKEN` would not run CI.
 - One PR per version (`kit/node-X.Y.Z`), branched from the commit it read, so it never undoes newer work on main. A newer version closes the open PR of an older one. Closing a PR and keeping its branch means "no" for that version; a failed run deletes the branch it made, and a branch left without any PR (a cancelled run) is made again.
-- Only pins of the line the repo runs on change (the major in `.node-version` or `.nvmrc`; with an alias like `lts/*` there, nothing changes): an `engines` pin of another major (`^18.17.0` next to `.nvmrc` 22) is left alone.
+- Only pins of the line the repo runs on change (the major of an exact version in `.node-version` or `.nvmrc`; when that file floats, as `lts/*` or `22`, the `engines` floor is left alone; next to an exact version file, an `engines` `^`/`~` is a support floor and is left alone too): an `engines` pin of another major (`^18.17.0` next to `.nvmrc` 22) is left alone.
 - The repo's CI tests the new version only if it reads the version file (`actions/setup-node` with `node-version-file: .nvmrc`), not a fixed `node-version`.
 - Merging is the owner's call, like any PR.
 

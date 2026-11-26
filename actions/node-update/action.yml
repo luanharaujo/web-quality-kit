@@ -61,7 +61,7 @@ runs:
         work="$RUNNER_TEMP/node-update"
         rm -rf "$work" && mkdir -p "$work"
         python3 "$KIT/scripts/node_update.py" plan "$GITHUB_WORKSPACE" --index "$INDEX" > "$work/plan.json"
-        read -r target newer count < <(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["target"] or "-", p["newer_lts"] or "-", len(p["files"]))' "$work/plan.json")
+        read -r target newer count < <(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["target"] or "-", p["newer_lts"] or "-", len(p["files"]))' "$work/plan.json")
         [[ "$newer" != "-" ]] && echo "::notice::A newer LTS exists (Node $newer): moving to a new major is a decision, not an automatic update."
         if [[ "$count" == "0" ]]; then
           echo "Node: nothing to update." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
@@ -93,7 +93,7 @@ runs:
         # From here a failure must not leave a branch without a PR (it would
         # read as "already proposed" every week after).
         trap 'gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" >/dev/null 2>&1 || true' ERR
-        python3 -c 'import json,sys; [print(f["path"]) for f in json.load(open(sys.argv[1]))["files"]]' "$work/plan.json" > "$work/paths"
+        python3 -I -c 'import json,sys; [print(f["path"]) for f in json.load(open(sys.argv[1]))["files"]]' "$work/plan.json" > "$work/paths"
         while read -r path; do
           blob=$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=$branch" -q .sha)
           gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/$path" -f branch="$branch" -f sha="$blob" \
@@ -106,7 +106,7 @@ runs:
         # Only this workflow's own branches (kit/node-X.Y.Z, same repo): a hand-made
         # branch or a fork's PR with a similar name is never touched.
         gh pr list -R "$GITHUB_REPOSITORY" --state open --limit 200 --json number,headRefName,isCrossRepository > "$work/open.json"
-        python3 -c 'import json,re,sys
+        python3 -I -c 'import json,re,sys
         for p in json.load(open(sys.argv[1])):
             if not p["isCrossRepository"] and re.fullmatch(r"kit/node-\d+\.\d+\.\d+", p["headRefName"]) and p["headRefName"] != sys.argv[2]:
                 print(p["number"])' "$work/open.json" "$branch" |
