@@ -24,6 +24,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -53,35 +54,71 @@ def fetch(url, timeout=20, with_headers=False):
     return out if with_headers else out[:2]
 
 
-def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rules.HASHED_DIRS):
+def fetch_steady(url, tries=3, wait=2.0):
+    """One answer worth judging: a network error or a 5xx is asked again
+    (a deploy should not fail on a single blip)."""
+    for n in range(tries):
+        status, body, h = fetch(url, with_headers=True)
+        if status and status < 500:
+            break
+        if n < tries - 1:
+            time.sleep(wait)
+    return status, body, h
+
+
+def spread(files, sample):
+    """At most `sample` files, taken in turn from each folder, so one big
+    build folder does not hide another (a declared assets/ next to _astro/)."""
+    folders = {}
+    for f in files:
+        folders.setdefault(f.rsplit("/", 1)[0], []).append(f)
+    out, queues = [], [list(v) for _, v in sorted(folders.items())]
+    while len(out) < sample and any(queues):
+        for q in queues:
+            if q and len(out) < sample:
+                out.append(q.pop(0))
+    return out
+
+
+def cache_problems(base, site_dir, paths, sample, extra=(), hashed_dirs=site_rules.HASHED_DIRS, exceptions=(),
+                   tries=3, wait=2.0):
     """(url, problem) for each page and hashed file whose live Cache-Control
-    breaks the rules. No cache-busting query here: the CDN's own answer is
+    breaks the rules of site_rules.py (same exceptions: cache-html,
+    cache-hashed). No cache-busting query here: the CDN's own answer is
     what visitors get."""
     hashed = []
     for root, dirs, names in os.walk(site_dir):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))
         for n in sorted(names):
             rel = os.path.relpath(os.path.join(root, n), site_dir).replace(os.sep, "/")
-            if site_rules.is_hashed(rel, extra, hashed_dirs):
+            if site_rules.is_hashed(rel, extra, hashed_dirs) and not budget.rule_exception("cache-hashed", rel, exceptions):
                 hashed.append("/" + rel)
     out = []
+
+    def url(path):
+        return base.rstrip("/") + urllib.parse.quote(path, safe="/?=&%")
+
     for path in paths:
         local = local_file(site_dir, path)
-        if not local.endswith(".html"):
+        rel = os.path.relpath(local, site_dir).replace(os.sep, "/")
+        if not local.endswith(".html") or budget.rule_exception("cache-html", rel, exceptions):
             continue
-        status, _, h = fetch(base.rstrip("/") + path, with_headers=True)
+        status, _, h = fetch_steady(url(path), tries, wait)
         cc = h.get("cache-control", "")
-        age = site_rules.max_age(cc)
-        if status == 200 and ("immutable" in cc.lower() or (age is not None and age > site_rules.HTML_MAX_AGE)):
+        age = site_rules.max_age(cc, shared=True)
+        if status != 200:
+            out.append((path, f"HTTP {status}"))
+        elif "immutable" in cc.lower() or (age is not None and age > site_rules.HTML_MAX_AGE):
             out.append((path, f"page cached too long: '{cc}'"))
-    for path in hashed[:sample]:
-        status, _, h = fetch(base.rstrip("/") + path, with_headers=True)
+    chosen = spread(hashed, sample)
+    for path in chosen:
+        status, _, h = fetch_steady(url(path), tries, wait)
         cc = h.get("cache-control", "")
         if status != 200:
             out.append((path, f"HTTP {status}"))
         elif (site_rules.max_age(cc) or 0) < site_rules.YEAR or "immutable" not in cc.lower():
             out.append((path, f"Cache-Control '{cc or 'none'}' (needs max-age={site_rules.YEAR}, immutable)"))
-    return out, min(len(hashed), sample)
+    return out, len(chosen)
 
 
 def check(base, path, site_dir, salt):
@@ -115,7 +152,7 @@ def main():
     if a.cache and not a.site_dir:
         print("::error::--cache needs --site-dir (the published files say which are hashed)", file=sys.stderr)
         return 2
-    cfg = budget.load(a.config, datetime.date.today()) if a.cache else {"errors": [], "hashed": [], "hashed_dirs": []}
+    cfg = budget.load(a.config, datetime.date.today()) if a.cache else {"errors": [], "hashed": [], "hashed_dirs": [], "exceptions": []}
     if cfg["errors"]:
         for e in cfg["errors"]:
             print(f"::error::{a.config}: {e}", file=sys.stderr)
@@ -144,7 +181,8 @@ def main():
         return 1
     if a.cache:
         problems, n = cache_problems(a.base_url, a.site_dir, paths, a.cache_sample, cfg["hashed"],
-                                     site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]))
+                                     site_rules.HASHED_DIRS + tuple(cfg["hashed_dirs"]), cfg["exceptions"],
+                                     wait=min(a.wait, 5))
         print(f"\n## Live cache (Cache-Control)\n\n{len(paths)} pages, {n} hashed files checked.\n")
         if problems:
             print("| | Address | Problem |\n|---|---|---|")

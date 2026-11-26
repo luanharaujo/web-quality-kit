@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: "17 6 * * 1"   # Monday 06:17 UTC
   workflow_dispatch:
+    inputs:
+      start-history:
+        description: Start the history over (only after checking why the last runs kept none)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,4 +39,5 @@ jobs:
         with:
           base-url: https://example.org
           paths: /
+          start-history: ${{ inputs.start-history || false }}
           # probes-file: probes.csv   # "ISO time,1|0" per line, from your prober

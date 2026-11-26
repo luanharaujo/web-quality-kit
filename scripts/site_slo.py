@@ -60,8 +60,10 @@ def lab(a):
         page = re.sub(r"[?#].*$", "", page) or "/"
         if v is not None:
             week.setdefault(page, []).append(float(v))
-    if not week:
-        print("## SLO\n\n🔴 no Lighthouse result from the live site")
+    missing = [p for p in a.pages.split() if p not in week]
+    if not week or missing:
+        print("## SLO\n\n🔴 no Lighthouse result from the live site for: " + (", ".join(missing) or "any page"))
+        print("::error::SLO unknown: a page was not measured (Lighthouse failed on it)", file=sys.stderr)
         return 1
     history = []
     if a.history and os.path.exists(a.history):
@@ -108,6 +110,7 @@ def probe(a):
     slo = cfg["slo"]
     start = now - datetime.timedelta(days=slo["window_days"])
     samples = []
+    last = start
     for n, ln in enumerate(open(a.csv), 1):
         ln = ln.strip()
         if not ln or ln.startswith("#"):
@@ -123,8 +126,13 @@ def probe(a):
             continue
         if start < when <= now:
             samples.append(up)
+            last = max(last, when)
     if not samples:
         print("## SLO\n\n🔴 no probe in the window: is the prober running?")
+        return 1
+    if now - last > datetime.timedelta(hours=a.max_gap_hours):
+        print(f"## SLO\n\n🔴 the last probe is from {last.isoformat()}: the prober stopped, so availability is unknown")
+        print("::error::SLO unknown: the prober stopped", file=sys.stderr)
         return 1
     avail = 100 * sum(samples) / len(samples)
     budget_share = (100 - avail) / (100 - slo["availability_pct"]) if slo["availability_pct"] < 100 else float(avail < 100)
@@ -152,10 +160,12 @@ def main():
     lp.add_argument("--history", default="")
     lp.add_argument("--config", default="web-budget.json")
     lp.add_argument("--today")
+    lp.add_argument("--pages", default="", help="pages that must have a result, space separated")
     pp = sub.add_parser("probe")
     pp.add_argument("csv")
     pp.add_argument("--config", default="web-budget.json")
     pp.add_argument("--now")
+    pp.add_argument("--max-gap-hours", type=float, default=24, help="older last probe = the prober stopped")
     a = p.parse_args()
     return lab(a) if a.cmd == "lab" else probe(a)
 
