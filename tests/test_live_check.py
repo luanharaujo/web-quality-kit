@@ -138,6 +138,32 @@ def main():
                     ' "approved_by": "owner", "date": "2026-11-20"}]}')
         r = run(base, published, "/", "--cache", f"--config={cfg}")
         assert r.returncode == 0 and "0 hashed files" in r.stdout, r.stdout + r.stderr
+        # An expired rule exception is a config error (not a crash), judged after
+        # the live check: the page table still says the deploy is live.
+        with open(cfg, "w") as f:
+            f.write('{"exceptions": [{"rule": "cache-html", "files": ["index.html"], "reason": "landing page, CDN purge",'
+                    ' "approved_by": "owner", "date": "2026-01-01", "expires": "2026-02-01"}]}')
+        r = run(base, published, "/", "--cache", f"--config={cfg}")
+        assert r.returncode == 2 and "200, same as published" in r.stdout and "expired" in r.stderr \
+            and "Traceback" not in r.stderr, r.stdout + r.stderr
+        # Nothing hashed to check, or no config file: yellow, never a silent green.
+        bare_live, bare_pub = os.path.join(tmp, "bare-live"), os.path.join(tmp, "bare-pub")
+        write(bare_live, {"index.html": "<h1>plain</h1>"})
+        write(bare_pub, {"index.html": "<h1>plain</h1>"})
+        server2, base2 = serve(bare_live)
+        try:
+            Quiet.rules = {"/": "public, max-age=0, must-revalidate"}
+            r = run(base2, bare_pub, "/", "--cache", "--config=/nonexistent/web-budget.json")
+            assert r.returncode == 0 and "no hashed file was checked" in r.stdout and "not found" in r.stdout \
+                and "🟢 every" not in r.stdout, r.stdout
+            # An undeclared Vite assets/ is named, since its cache is not checked.
+            vite2 = {"assets/a-Bh-3x9aZ.js": "1", "assets/b-C38fXH4l.css": "2"}
+            write(bare_live, vite2)
+            write(bare_pub, vite2)
+            r = run(base2, bare_pub, "/", "--cache")
+            assert "assets/ looks like build output" in r.stdout and "not declared" in r.stderr, r.stdout + r.stderr
+        finally:
+            server2.shutdown()
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr

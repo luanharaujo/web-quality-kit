@@ -201,7 +201,7 @@ def load_config(path, today):
             errors.append(f"{where}: date/expires must be YYYY-MM-DD")
             continue
         if expires and expires < today:
-            errors.append(f"{where}: expired on {expires} ({e['limit']}); renew it or meet the limit")
+            errors.append(f"{where}: expired on {expires} ({e.get('limit') or e.get('rule')}); renew it or meet the limit")
             continue
         if len(str(e["reason"]).strip()) < 10:
             errors.append(f"{where}: reason too short to explain the exception")

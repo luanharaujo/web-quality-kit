@@ -41,6 +41,17 @@ def p75(values):
     return v[lo] + (v[hi] - v[lo]) * (k - lo)
 
 
+def page_of(url, base=""):
+    """The page as asked (paths input), not where it ended up: a redirect
+    (/about to /about/) or a site in a subfolder (https://x.github.io/repo)
+    must keep the name the history and --pages use."""
+    path = re.sub(r"[?#].*$", "", re.sub(r"^https?://[^/]+", "", url)) or "/"
+    prefix = re.sub(r"^https?://[^/]+", "", base or "").rstrip("/")
+    if prefix and (path == prefix or path.startswith(prefix + "/")):
+        path = path[len(prefix):] or "/"
+    return path
+
+
 def lab(a):
     today = datetime.date.fromisoformat(a.today) if a.today else datetime.date.today()
     cfg = budget.load(a.config, today)
@@ -56,8 +67,7 @@ def lab(a):
             print("## SLO\n\n🔴 " + "; ".join(errs))
             return 1
         v = (lhr.get("audits", {}).get("largest-contentful-paint") or {}).get("numericValue")
-        page = re.sub(r"^https?://[^/]+", "", lhr.get("finalUrl") or lhr.get("requestedUrl", "")) or "/"
-        page = re.sub(r"[?#].*$", "", page) or "/"
+        page = page_of(lhr.get("requestedUrl") or lhr.get("finalUrl", ""), a.base_url)
         if v is not None:
             week.setdefault(page, []).append(float(v))
     missing = [p for p in a.pages.split() if p not in week]
@@ -109,7 +119,7 @@ def probe(a):
         return 1
     slo = cfg["slo"]
     start = now - datetime.timedelta(days=slo["window_days"])
-    samples = []
+    samples, times = [], []
     last = start
     for n, ln in enumerate(open(a.csv), 1):
         ln = ln.strip()
@@ -126,6 +136,7 @@ def probe(a):
             continue
         if start < when <= now:
             samples.append(up)
+            times.append(when)
             last = max(last, when)
     if not samples:
         print("## SLO\n\n🔴 no probe in the window: is the prober running?")
@@ -143,8 +154,14 @@ def probe(a):
     else:
         state = "🟢 ok"
     print(f"## SLO: availability ({slo['window_days']} days)\n")
-    print("| | Up | Goal | Error budget spent | Probes |\n|---|---|---|---|---|")
-    print(f"| {state} | {avail:.3f}% | ≥ {slo['availability_pct']}% | {budget_share * 100:.0f}% | {len(samples)} |")
+    times.sort()
+    gap = max((b - a_ for a_, b in zip(times, times[1:])), default=datetime.timedelta(0))
+    print("| | Up | Goal | Error budget spent | Probes | Longest silence |\n|---|---|---|---|---|---|")
+    print(f"| {state} | {avail:.3f}% | ≥ {slo['availability_pct']}% | {budget_share * 100:.0f}% | {len(samples)} "
+          f"| {gap.total_seconds() / 3600:.1f} h |")
+    if gap > datetime.timedelta(hours=a.max_gap_hours):
+        print(f"\n🟡 the prober was silent for {gap.total_seconds() / 3600:.0f} h inside the window: "
+              "availability only counts the time it was watching.")
     if budget_share >= RISK_SHARE:
         print(f"::error::SLO at risk: availability {avail:.3f}%, {budget_share * 100:.0f}% of the error budget spent",
               file=sys.stderr)
@@ -161,6 +178,7 @@ def main():
     lp.add_argument("--config", default="web-budget.json")
     lp.add_argument("--today")
     lp.add_argument("--pages", default="", help="pages that must have a result, space separated")
+    lp.add_argument("--base-url", default="", help="the site's address; its path (a subfolder) is not part of a page")
     pp = sub.add_parser("probe")
     pp.add_argument("csv")
     pp.add_argument("--config", default="web-budget.json")
