@@ -70,7 +70,7 @@ form.addEventListener('submit', (e) => {
   e.preventDefault();
   tapAt = tapAt || performance.now();
   // good-bg: a draft saved with no screen change, well after the tap
-  if (v === 'good-bg') setTimeout(() => fetch('/api/good-bg/drafts', { method: 'POST', body: '{}' }), 2500);
+  if (v === 'good-bg') setTimeout(() => fetch('/api/good-bg/drafts', { method: 'POST', headers: { 'x-request-id': crypto.randomUUID() }, body: '{}' }), 2500);
   book();
 });
 </script>
