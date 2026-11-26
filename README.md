@@ -67,6 +67,7 @@ Same two modes: `absolute` fails on any case; `baseline` fails on a new case (on
 
 - `absolute` (new repo): any finding fails, from the first run.
 - `baseline` (older repo): a finding main did not have fails; the count never grows. Switch to `absolute` once it reaches zero.
+- It runs at the repo root (where `package.json` is). The installed-dependencies check looks for `node_modules`, so Yarn Plug'n'Play is not supported yet.
 - Install the repo's dependencies (`npm ci`) before `web-ci`: knip loads the repo's own configs (`vite.config`, `astro.config`) and fails without them, with a clear error.
 - The repo's own `knip.json` (or `"knip"` in `package.json`) is used: entry points a plugin cannot see, files to ignore. Ignoring is the registered exception here, in the repo, reviewed in its PR.
 
