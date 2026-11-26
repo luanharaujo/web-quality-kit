@@ -1,0 +1,12 @@
+name = "example"
+main = "src/worker.js"
+
+[[ratelimits]]
+name = "RATELIMIT"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 100
+  period = 60
+
+[vars]
+TURNSTILE_VERIFY_URL = "https://verify.example.com"

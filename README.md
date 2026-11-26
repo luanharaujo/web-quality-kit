@@ -21,6 +21,7 @@ Shared quality checks for web projects (static sites, React/Vite apps, Cloudflar
 | Tests | the repository's own command; lines starting with `ok` / `✓` / `PASS` count as passed and `FALHOU` / `not ok` / `✗` / `FAIL` as failed | `test-command` |
 | Personal data and secrets | `scripts/data_guard.py`: CPF/CNPJ with valid check digits, mobile numbers, e-mails, data files, tokens. Values are never printed, only masked and hashed | `data-guard: "true"` (public repositories) |
 | Database of a server (N+1, routes, indexes) | `scripts/server_queries.py` against the local server, with the kit's query counter in the app; query-in-a-loop lint (`tools/query_in_loop.mjs`, warning only) | `server-queries` |
+| Login policy (declaration, rate limit, Turnstile, same answer, no lockout; see below) | `scripts/auth_check.py`, on by default | `auth-config`, `auth-dynamic` |
 | Logs and request ids of a server | `scripts/server_observability.py` against the local server, with the kit's log helper in the app; `console.*` lint (`tools/console_outside_log.mjs`) | `observability` |
 | Service level objective of a server | `scripts/slo.py validate` on `slo.json`; `scripts/slo.py alert` decides the error-budget warning from numbers passed in | `slo` |
 | Modern web (warning only) | Baseline CSS (`@eslint/css` `use-baseline`) and Modern Web Guidance `legacy-scan` (old code with a native browser replacement; telemetry off) | `modern` |
@@ -97,6 +98,36 @@ These are rules, not comparisons: they fail on the first run and with `fail-on-w
 **Upgrading the kit in a repository that already runs `server-queries`:** the check requires the app's `d1_queries.ts` to be identical to the kit's, so a new kit version that changes it (1.11.0 does: the route template in the log) is red until the file is copied again. A pull request that only bumps the kit version is not enough: it must also copy `templates/server/d1_queries.ts` and, in baseline mode, list today's cases of any new rule (`baseline.unpaged`, `baseline.fetch` in 1.11.0). Read the cases from the first red run.
 
 The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ better, ↓ worse), and the cases in collapsed sections. It is plain text and emoji so it reads well on a phone. `lang: pt` writes it in Portuguese.
+
+## Login policy (`auth-config`)
+
+Always on. A repository with a login declares it in `.quality/auth.json` (`templates/auth.json`: methods, identifier, routes, how to start the server). A login found in the source (passkey calls, a login-code table, `/login` or sign-up routes, a password field) with no declaration fails; so does `"login": false` in a repository that has one.
+
+**Switches that weaken the check** need an entry in `exceptions` (`hatch`, `reason`, `approved_by`, `date`); the panel lists every active one. Hatch ids: `login:false`, `public:false:<route>`, `anonymous_writes:false:<route>`, `log_in_helper:<route>`, `ignore_paths:<path>`, `password_exception`, `mode:baseline`, `no_dynamic:<route>` (no `server` or `body`), `auth-dynamic:false`. Against main, these also fail without an entry: `route_removed:<route>`, `source_narrowed`, `d1_calls_removed:<name>` (these accept an entry), and a switch from `absolute` to `baseline` (fails even with one). `auth-config: "off"` works only in the kit's own repository. The baseline never tolerates a switch.
+
+| Rule | What fails |
+|---|---|
+| A0 | a login or sign-up route that is not declared |
+| A1 | password login without a registered exception (reason, approver, date, algorithm); with one, parameters below Argon2id m≥19 MiB t≥2 p=1, scrypt N≥2^17 r=8 p=1, bcrypt cost≥12 (legacy only, refuses >72 bytes) or PBKDF2-SHA256 ≥600k (FIPS only); MD5/SHA-1/SHA-256 on a password; a password column that is not a hash |
+| A2 | a public login or sign-up route without the Worker `ratelimits` binding call before any D1 use (and no binding in wrangler) |
+| A3 | no server-side Turnstile check (`success`, `hostname`, `action`) before D1 in a route that writes or sends; dynamically: no token, a refused token, a spent or repeated token, a token for another hostname or action must all get a 4xx that differs from the answer to a valid token (`seed` the data a valid request needs) |
+| A4 | a known and an unknown identifier get different status, JSON keys, size band or median time (≥50 ms, 30 of each) |
+| A5 | an account lock; a ceiling by `COUNT` whose `WHERE` does not filter by the client (ip, bucket, key, person, phone, credential); after 40 failed attempts from one IP, an owner who solves the challenge is refused (423/429) from another IP, or gets a 423 or a 429 without `Retry-After` of at most 120 s on that same IP; or is refused after 40 requests with valid tokens to the same target from 40 IPs |
+| A6 | no `login_attempt` event in the route, the event or a `console.*` carrying phone, e-mail, IP, user agent, code or hash |
+
+The server checks start the app declared in `server.start` (with `TURNSTILE_SECRET` and `TURNSTILE_VERIFY_URL` set) against a local siteverify that behaves like Cloudflare's public test keys; it reads form, multipart and JSON bodies, and exists because Cloudflare's own test keys always answer hostname `example.com` and no action, which would make the hostname and action checks impossible to prove. The app reads `TURNSTILE_SECRET` (the real one only comes from the repository's GitHub environment) and `TURNSTILE_VERIFY_URL`, a test override that must never work in production: never a wrangler var, and accepted only for a local http address (A3 fails unless a file with the siteverify call or the override compares a host with `127.0.0.1` or `localhost`; a default address is not a check):
+
+```js
+function siteverifyUrl(override) {
+  if (override) {
+    const u = new URL(override);
+    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) return u.href;
+  }
+  return "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+}
+```
+
+`mode: "absolute"` (new repository, the template): everything fails. `mode: "baseline"`: for repositories that existed before the policy (needs the `mode:baseline` exception; which repositories may use it is decided outside this kit); the finding ids listed in `baseline` are tolerated and the list may only shrink against main (each occurrence has its own id: a second one in the same file or route ends in `#2`). Folders `scripts/` and `ops/` are read only where the code answers requests. Static rules read the handler (`"handler": "file:function"`, or the route literal) and cannot see D1 use through a helper: list helpers in `d1_calls`. Proof: `tests/test_auth.py` with a good and a bad example server in `tests/cases/auth/`.
 
 ## Logs and request ids of a server (`observability`)
 

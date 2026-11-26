@@ -98,3 +98,15 @@ if python3 "$HERE/../scripts/web_health.py" compare - "$OUT5/health.json" --no-f
   echo "absolute site rules did not fail the bad site"; exit 1
 fi
 echo "site rules fail the bad site: ok"
+
+# The login check runs inside web_ci.sh: the bad example is caught, the site without a login is not.
+OUTA="$(mktemp -d)"
+(cd "$HERE/cases/auth/bad" && OUT="$OUTA" AUTH_DYNAMIC=false bash "$HERE/../scripts/web_ci.sh" > "$OUTA/log.txt" 2>&1) || { cat "$OUTA/log.txt"; exit 1; }
+python3 - "$OUTA/health.json" "$OUT/health.json" <<'PY'
+import json, sys
+bad = json.load(open(sys.argv[1]))["metrics"]["auth"]
+assert bad["login"] and any(f["rule"] == "A1" for f in bad["findings"]), bad
+site = json.load(open(sys.argv[2]))["metrics"]["auth"]
+assert not site["login"] and site["findings"] == [], site
+print("auth: ok")
+PY

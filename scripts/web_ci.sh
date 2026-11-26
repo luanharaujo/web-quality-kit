@@ -32,6 +32,12 @@
 #                   (scripts/server_queries.py: N+1 with 3 vs 30 rows, list routes
 #                   without that test, missing indexes) and the query-in-a-loop
 #                   lint (warning only) on its "source" folders. Empty = off
+#   AUTH_CONFIG     the repository's login declaration (default .quality/auth.json):
+#                   login policy check (scripts/auth_check.py); always on, a login
+#                   found without a declaration fails. "off" works only in the kit's
+#                   own repository (anywhere else it is a failure)
+#   AUTH_DYNAMIC    "false" = skip the checks that start the server (needs a
+#                   registered exception, hatch "auth-dynamic:false")
 #   OBSERVABILITY   the repository's observability.json = logs and request ids of the
 #                   server (scripts/server_observability.py: x-request-id on every
 #                   route, one JSON log line per request with the id, no personal
@@ -223,6 +229,16 @@ if [[ -n "${SERVER_QUERIES:-}" ]]; then
   fi
   end
 fi
+
+log "Login (policy A0-A7)"
+auth_flags=(--root "$PWD" --repo "${GITHUB_REPOSITORY:-}")
+[[ "${AUTH_DYNAMIC:-true}" == "false" ]] && auth_flags+=(--no-dynamic)
+auth_config="${AUTH_CONFIG:-.quality/auth.json}"
+if [[ "$auth_config" == "off" ]]; then auth_flags+=(--off); auth_config=".quality/auth.json"; fi
+python3 "$KIT/scripts/auth_check.py" check --config "$auth_config" "${auth_flags[@]}" > "$OUT/auth.json" \
+  || { echo "::error::auth_check.py did not run"; exit 1; }
+args+=(--auth "$OUT/auth.json")
+end
 
 if [[ -n "${OBSERVABILITY:-}" ]]; then
   log "Logs and request ids"

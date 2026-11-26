@@ -91,6 +91,18 @@ inputs:
       a warning for queries inside a loop. The app wraps env.DB with the kit's
       templates/server/d1_queries.ts. Empty = off.
     default: ""
+  auth-config:
+    description: >
+      The repository's login declaration. The login check is always on: a login
+      found in the source without this file fails, and a declared one must follow
+      the policy (password forbidden by default, cheap filter before the costly
+      step, Turnstile checked on the server, same answer for known and unknown,
+      never locking the owner out, an attempt event without personal data).
+      "off" is accepted only in the kit's own repository; anywhere else it fails.
+    default: .quality/auth.json
+  auth-dynamic:
+    description: '"false" = skip the checks that start the server; needs a registered exception (hatch "auth-dynamic:false").'
+    default: "true"
   observability:
     description: >
       The repository's observability.json: logs and request ids of the server
@@ -158,6 +170,8 @@ runs:
         TEST_COMMAND: ${{ inputs.test-command }}
         DATA_GUARD: ${{ inputs.data-guard }}
         SERVER_QUERIES: ${{ inputs.server-queries }}
+        AUTH_CONFIG: ${{ inputs.auth-config }}
+        AUTH_DYNAMIC: ${{ inputs.auth-dynamic }}
         OBSERVABILITY: ${{ inputs.observability }}
         SLO: ${{ inputs.slo }}
         MODERN: ${{ inputs.modern }}
