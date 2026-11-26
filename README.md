@@ -287,7 +287,12 @@ Keeps the description of every pull request in the standard, without depending o
 - **Body lint** (`scripts/pr_lint.py`, a copy of the central source, pinned by hash in the test): the three sections, a `<details>` technical block, and the language of the repository's visibility (Portuguese for a private repository, English for a public one). It reads only the event; nothing from the body is executed. Dependabot and the canary App are exempt.
 - **Sticky comment** `<!-- PR-VERIFICACOES -->`, one per pull request, created or edited on every push: *Checks* (what each check means, how strict it is, the real result), *Health* (the panel, with dots, bars and arrows against main) and *What each metric means* (a glossary, so a reader who did not design the system can trust the numbers). Texts are in `scripts/pr_texts.json` (pt and en); only text and emoji, for GitHub Mobile.
 
-Copy `templates/pr-description.yml`: event `pull_request` (never `pull_request_target`), `contents: read` + `pull-requests: write`, job `pr-descricao`. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. For the panel, make the job `needs:` the CI job: `web-ci` saves it as the `pr-panel` artifact (`panel-artifact` input; empty = off).
+Two pieces, both with the event `pull_request` (never `pull_request_target`):
+
+- `templates/pr-description.yml`, a workflow of its own with the job `pr-descricao` (`mode: lint`, `contents: read`). It is the only workflow that listens to `edited`, it has no `concurrency` and it reports on every pull request, so it can be a required check.
+- `templates/pr-comment-job.yml`, the job `pr-verificacoes` (`mode: comment`, `pull-requests: write`) inside the CI workflow, which must not list `edited`. It `needs:` the CI job: `web-ci` saves the health panel as the `pr-panel` artifact (`panel-artifact` input; empty = off).
+
+Why: an `edited` event in a workflow with `cancel-in-progress` cancels the run on the same commit, and the cancelled checks keep the pull request red. A fork pull request, or Dependabot (read-only token), skips the comment with a warning instead of failing. A failed `pr-descricao` also stays on its commit after the description is fixed: push a new commit to clear it.
 
 ## Preview link (`actions/preview-link`)
 

@@ -1,0 +1,21 @@
+# The sticky checks and health comment: paste the job `pr-verificacoes` under `jobs:`
+# of the CI workflow, next to templates/pr-description.yml (the required check).
+# It must be in the same file as the CI job and `needs:` it: `web-ci` saves the health
+# panel as the `pr-panel` artifact of that run. That workflow must not list `edited`
+# in its `pull_request` types. Same release SHA as the other kit actions.
+jobs:
+  pr-verificacoes:
+    needs: [your-ci-job]
+    # Also after a failure, so the comment shows it.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    # Dependabot code never runs on the owner's Mac.
+    runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: luanharaujo/web-quality-kit/actions/pr-description@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit
+        with:
+          mode: comment
+          needs: ${{ toJSON(needs) }}

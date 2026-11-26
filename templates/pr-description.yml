@@ -1,10 +1,12 @@
 # Copy to .github/workflows/pr-description.yml. Replace the all-zero SHA with the release
 # commit, with the version in a comment (never @v1), like the other kit actions.
 #
-# To show the health panel, this job must live in the SAME workflow file as the CI
-# job and `needs:` it (the CI action saves the panel as the `pr-panel` artifact of
-# that run). As a separate file the comment has no panel and says so.
-#   needs: [your-ci-job]       # `if: always()` keeps the comment when it fails
+# This is the required check `pr-descricao`, in a workflow of its own: it is the only
+# one that listens to `edited`. In the CI workflow, an edit of the description would
+# start a second run on the same commit and cancel the first, and the cancelled checks
+# keep the pull request red even after the new run passes. For the same reason there
+# is no `concurrency` here, and no `needs`, `if` or path filter: it reports on every
+# pull request. The checks and health comment is templates/pr-comment-job.yml.
 name: PR description
 
 on:
@@ -15,20 +17,13 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-
-concurrency:
-  group: pr-description-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   pr-descricao:
     # Dependabot code never runs on the owner's Mac.
     runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 5
-    # needs: [your-ci-job]
-    if: always()
     steps:
       - uses: luanharaujo/web-quality-kit/actions/pr-description@0000000000000000000000000000000000000000 # vX.Y.Z  <- replace with the release commit
         with:
-          needs: ${{ toJSON(needs) }}
+          mode: lint

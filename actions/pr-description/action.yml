@@ -3,13 +3,17 @@
 #    repository's visibility): scripts/pr_lint.py, which reads only the event;
 #  - the sticky comment <!-- PR-VERIFICACOES --> (checks, health panel, glossary)
 #    is created or updated on every push.
-# Nothing from the pull request body is executed. Meant for a job named
-# `pr-descricao` that runs on `pull_request` with `pull-requests: write` and
-# `contents: read` (see templates/pr-description.yml). Never `pull_request_target`.
+# Nothing from the pull request body is executed. `mode` splits the two: the
+# required job `pr-descricao` runs the lint in its own workflow, the one that
+# listens to `edited` (templates/pr-description.yml); the comment is a job of the
+# CI workflow (templates/pr-comment-job.yml). Never `pull_request_target`.
 name: PR description
 description: Lint the pull-request body and keep the checks and health comment up to date.
 
 inputs:
+  mode:
+    description: '"lint" (check the body only), "comment" (the sticky comment only) or "all".'
+    default: all
   lang:
     description: '"pt", "en" or "auto" (pt for a private repository, en for a public one).'
     default: auto
@@ -23,7 +27,18 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Mode
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        case "$MODE" in
+          all | lint | comment) ;;
+          *) echo "::error::mode must be all, lint or comment"; exit 1 ;;
+        esac
+
     - name: Health panel of this run
+      if: inputs.mode != 'lint'
       continue-on-error: true
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
@@ -33,6 +48,7 @@ runs:
     # Fork pull requests and Dependabot get a read-only token: the script skips
     # the comment with a warning instead of failing.
     - name: Checks and health comment
+      if: inputs.mode != 'lint'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -56,6 +72,7 @@ runs:
 
     # Last, so a body that fails the lint still gets its comment.
     - name: Description standard (lint)
+      if: inputs.mode != 'comment'
       shell: bash
       env:
         KIT: ${{ github.action_path }}/../..
