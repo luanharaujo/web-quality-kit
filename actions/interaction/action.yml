@@ -35,6 +35,9 @@ inputs:
   failure-pass:
     description: '"false" = skip the second run with a failing network.'
     default: "true"
+  reads:
+    description: '"warn" (default while they roll out) = the read checks (loading state, duplicate reads, search debounce) only warn; "enforce" = they fail like the others.'
+    default: warn
   lang:
     description: Panel language, "en" or "pt".
     default: en
@@ -76,6 +79,7 @@ runs:
         OUT: ${{ runner.temp }}/kit-interaction
         CONFIG: ${{ inputs.config }}
         FAILURE_PASS: ${{ inputs.failure-pass }}
+        KIT_INTERACTION_READS: ${{ inputs.reads }}
       run: |
         mkdir -p node_modules "$OUT"
         ln -sfn "$KIT_PKG" node_modules/web-quality-kit-interaction

@@ -231,9 +231,9 @@ route once per run:
 | slow server | a second tap right away reaches the server once, or both requests carry the same `Idempotency-Key` | a double tap must not book twice |
 | slow server | no success words ("booked", "paid", "saved"...) before the server answers, unless the route is listed in `optimistic` | someone else may have taken the slot |
 | failing network | an error in `role=alert` with a "try again" button; what the person typed or chose is still there; "try again" sends again | never make them start over |
-| slow server, reads (GET) | within 400 ms of a held read the page shows `aria-busy` (a skeleton marks its region busy) or a visible `role=status` or progress bar; never a blank screen | a still, empty screen looks broken |
-| slow server, reads | the same read (URL and body) is not sent twice for one page load or one action | wasted requests and flicker |
-| after each test | a 7-letter word typed into every search field (`type=search`, `role=searchbox`, `role=combobox`) sends at most 2 reads | debounce: a read per key floods the server |
+| slow server, reads (GET) | within 400 ms of a held read something new says "loading": `aria-busy` turned on (a skeleton marks its region busy), new text in a `role=status`, or a progress bar appears; a status that was already there does not count | a still, empty screen looks broken |
+| slow server, reads | the same read (URL and body) is not sent again within 3 s for one page load or one action (a tap, a typed or chosen value); a retry after a failed read is fine | wasted requests and flicker |
+| after each test | a 7-letter word typed into every editable search field (`type=search`, `role=searchbox`, `role=combobox`) sends at most 2 reads carrying the typed text | debounce: a read per key floods the server |
 | uploads | a progress bar with a value (`role=progressbar` + `aria-valuenow`, or `<progress value>`), one per file; the drop zone reacts to `dragenter`; after the answer, a thumbnail or the file type and size; one failed file does not stop the others and keeps its own retry without choosing the file again | a spinner hides the truth; a file name is not proof |
 
 Server side, a contract test per write route:
@@ -258,6 +258,11 @@ name are counted too, so they cannot hide. `interaction.json` (template in
 words are English by default; an app in another language sets `success` and
 `retry` (regular expressions) in `interaction.json`, listing its own words and
 the English ones, since each key replaces the whole default pattern.
+
+The three read checks start in warning mode (`reads: warn`, the default):
+the panel lists what they find and nothing fails. Set `reads: enforce` once a
+repository passes them; the default will change after they have run on the
+real repositories.
 
 `mode: new` (new repositories) makes any gap red. `mode: baseline`
 (existing ones) only fails when something gets

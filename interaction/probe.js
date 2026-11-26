@@ -108,6 +108,11 @@
     const t = e.target;
     if (t && t.type === 'file') { activate(t); k.files = t.files ? t.files.length : 0; }
   }, true);
+  // A typed or chosen value starts a new action for the read checks only
+  // (a filter A, then B, then A again is three actions).
+  const newAction = () => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(); };
+  document.addEventListener('input', newAction, true);
+  document.addEventListener('change', newAction, true);
   document.addEventListener('drop', (e) => {
     if (e.dataTransfer && e.dataTransfer.files.length) { activate(e.target); k.files = e.dataTransfer.files.length; }
   }, true);
@@ -142,13 +147,41 @@
 
   // Something says "loading": aria-busy anywhere, or a visible status or
   // progress bar (a skeleton should carry aria-busy on its region).
-  k.loading = () => {
-    if (document.querySelector('[aria-busy=true]')) return 'aria-busy';
-    for (const el of document.querySelectorAll('[role=status],[role=progressbar],progress')) {
-      if (!el.getClientRects().length) continue;
-      if (el.getAttribute('role') === 'status' && !el.textContent.trim()) continue;
-      return `${el.getAttribute('role') || 'progress'}: "${(el.textContent.trim() || el.getAttribute('aria-label') || '').slice(0, 40)}"`;
+  // Loading signals: the last time something NEW said "loading" (aria-busy
+  // turned on, a status/live region got new text, a progress bar appeared).
+  // A status that was already on the page does not count.
+  k.loadAt = -1;
+  k.loadHow = '';
+  const LOAD_REGION = '[role=status],[aria-live]:not([aria-live=off])';
+  const signal = (how) => { k.loadAt = now(); k.loadHow = how; };
+  const onMutations = (list) => {
+    for (const m of list) {
+      const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (!t) continue;
+      if (m.type === 'attributes' && m.attributeName === 'aria-busy' && t.getAttribute('aria-busy') === 'true') { signal('aria-busy'); return; }
+      // While the HTML is still being parsed, new nodes are the page's own
+      // markup (a status that is always there), not a loading signal.
+      if (document.readyState === 'loading') continue;
+      if (m.type === 'childList') {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.matches('[aria-busy=true],[role=progressbar],progress') || n.querySelector('[aria-busy=true],[role=progressbar],progress')) { signal('added: busy region or progress bar'); return; }
+        }
+      }
+      const region = t.closest && t.closest(LOAD_REGION);
+      if (region && region.textContent.trim()) { signal(`status: "${region.textContent.trim().slice(0, 40)}"`); return; }
     }
+  };
+  // Observing the document itself works before <html> exists, so the first
+  // render's signals are seen too.
+  new MutationObserver(onMutations).observe(document, {
+    attributes: true, attributeFilter: ['aria-busy'], childList: true, subtree: true, characterData: true,
+  });
+
+  k.loadingSince = (t) => {
+    if (k.loadAt >= t - 500) return k.loadHow;
+    // Busy region already in the first HTML (server-rendered skeleton) while the page is still loading.
+    if (t < 3000 && document.querySelector('[aria-busy=true]')) return 'aria-busy from the first HTML';
     return '';
   };
 

@@ -14,6 +14,8 @@ ln -sfn "$kit/interaction" "$demo/node_modules/web-quality-kit-interaction"
 pw="$kit/interaction/node_modules/.bin/playwright"
 
 cd "$demo"
+# The read checks only warn by default; here they must count, to prove them.
+export KIT_INTERACTION_READS=enforce
 for mode in slow fail; do
   KIT_INTERACTION_MODE=$mode KIT_INTERACTION_ENFORCE=record KIT_INTERACTION_REPORT_DIR="$out/$mode" \
     "$pw" test -c playwright.config.mjs --output "$out/results-$mode" >"$out/$mode.log" 2>&1 \

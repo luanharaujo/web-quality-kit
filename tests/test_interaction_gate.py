@@ -137,6 +137,11 @@ class Compare(unittest.TestCase):
         self.assertIn("🔴 1 checks failing", panel)
         self.assertIn("**new** `POST /b double`", panel)
 
+    def test_warnings_never_fail(self):
+        panel, worse = g.compare(None, health(covered=["POST /a", "POST /b"], warnings=["GET /x debounce"]), "new", "en")
+        self.assertFalse(worse)
+        self.assertIn("🟡 1 read checks in warning mode", panel)
+
     def test_all_covered_is_green(self):
         panel, worse = g.compare(health(), health(covered=["POST /a", "POST /b"]), "new", "en")
         self.assertFalse(worse)

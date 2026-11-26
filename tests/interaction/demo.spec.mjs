@@ -25,12 +25,21 @@ for (const v of ['good', 'bad']) {
   });
 }
 
-for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search']) {
+for (const v of ['list-good', 'list-dup', 'list-noload', 'list-search', 'list-readonly', 'list-prefilled', 'list-excluded', 'list-poll', 'list-static']) {
   test(`list ${v}`, async ({ page }) => {
     await page.goto(`/list.html?v=${v}`);
     await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
   });
 }
+
+test('list list-filter (A, B, A again is three actions)', async ({ page }) => {
+  await page.goto('/list.html?v=list-filter');
+  await expect(page.getByText('Partner balance')).toBeVisible({ timeout: 8000 });
+  for (const level of ['b', 'a', 'b']) {
+    await page.getByLabel('Level').selectOption(level);
+    await expect(page.getByRole('status')).toHaveText('', { timeout: 8000 });
+  }
+});
 
 const count = (request, page) => async () => (await (await request.get(`/api/test/count?page=${page}`)).json()).n;
 
