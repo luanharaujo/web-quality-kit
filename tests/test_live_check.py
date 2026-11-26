@@ -194,6 +194,11 @@ def main():
             assert r.returncode == 1 and "page cached too long" in r.stdout, r.stdout + r.stderr
         finally:
             server3.shutdown()
+        # The same for a hashed file: a short max-age next to a long one fails.
+        Quiet.rules = {"/_astro/": ["public, max-age=60", "public, max-age=31536000, immutable"],
+                       "/": "public, max-age=0, must-revalidate"}
+        r = run(base, published, "/", "--cache")
+        assert r.returncode == 1 and "_astro/app.Ab12Cd34.js" in r.stdout, r.stdout + r.stderr
         # --cache without the published files is refused.
         r = subprocess.run([sys.executable, CHECK, "--base-url", base, "--cache"], capture_output=True, text=True)
         assert r.returncode == 2, r.stderr
