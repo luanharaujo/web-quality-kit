@@ -76,6 +76,13 @@ export function loadConfig() {
   return { ...DEFAULTS, ...user };
 }
 
+const claimFile = (mode, key) => path.join(settings().dir, 'claims', mode, Buffer.from(key).toString('base64url'));
+
+// Gives a claim back when its check could not judge (the page closed).
+function unclaim(mode, key) {
+  try { fs.unlinkSync(claimFile(mode, key)); } catch { /* already gone */ }
+}
+
 // One full check per route per run and mode, across workers.
 function claim(mode, key) {
   const { dir } = settings();
@@ -123,6 +130,10 @@ class Interaction {
 
   claim(kind, key) {
     return claim(kind, key);
+  }
+
+  unclaim(kind, key) {
+    unclaim(kind, key);
   }
 
   async install() {

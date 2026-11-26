@@ -26,7 +26,7 @@ const WORD = 'workout';
 const SEARCH = 'input[type=search],[role=searchbox],[role=combobox]';
 const DUPLICATE_WINDOW_MS = 3000;
 const CHAIN_MAX_MS = 5000; // reads extend a tap's window, never past this
-const MAX_KEY_GAP_MS = 250; // slower typing than this: the count is not judged
+const MAX_KEY_GAP_MS = 150; // slower typing than this: the count is not judged
 const DEBOUNCE_NEEDS_MS = 8000; // time left in the test before typing in a field
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -65,7 +65,7 @@ export class Reads {
     this.last = new Map(); // id -> { at, failed }
     this.flagged = new Set();
     this.typing = null;
-    this.actionAt = 0; // last tap or typed value (Node clock)
+    this.actionAt = 0; // last tap or submit (Node clock)
     this.activeUntil = 0; // end of the last read that tap started
     this.inflight = new Set(); // reads that tap started, not answered yet
     this.started = Date.now();
@@ -121,7 +121,7 @@ export class Reads {
       this.newAction();
       if (kind === 'tap') {
         this.actionAt = Date.now();
-      } else if (Date.now() - this.actionAt < 500) {
+      } else if (kind === 'change' && Date.now() - this.actionAt < 500) {
         return; // the "change" a tap causes by taking the focus from a field
       } else {
         this.actionAt = 0;
@@ -200,6 +200,9 @@ export class Reads {
     let how = '';
     for (;;) {
       how = (await evaluate(page, ([t, w]) => (window.__kit ? window.__kit.loadingSince(t, w) : ''), [left, cfg.busyWithinMs])) || '';
+      // The test ended and closed the page: nothing to judge, and another
+      // test may check this route.
+      if (!how && page.isClosed()) { this.o.unclaim('read', key); return; }
       // Keep looking a little longer when the page is slow to answer us.
       if (how || Date.now() - left > cfg.busyWithinMs + 1000) break;
       await sleep(40);
@@ -238,7 +241,7 @@ export class Reads {
         // machine it can grow past a page's debounce, and then the count
         // proves nothing.
         const times = await evaluate(page, () => (window.__kit ? window.__kit.keyTimes : []), null, 2000);
-        this.typing.gap = (times || []).reduce((max, t, i, all) => (i ? Math.max(max, t - all[i - 1]) : 0), 0);
+        this.typing.gap = !times ? Infinity : times.reduce((max, t, i, all) => (i ? Math.max(max, t - all[i - 1]) : 0), 0);
         await sleep(1500);
       } catch {
         this.typing = null;
@@ -247,7 +250,7 @@ export class Reads {
       const { count, key, gap } = this.typing;
       this.typing = null;
       if (!count) continue; // filters locally: nothing to debounce
-      if (gap > MAX_KEY_GAP_MS) continue; // typing was too slow to judge
+      if (gap > MAX_KEY_GAP_MS) { this.o.unclaim('debounce', where); continue; } // typing too slow to judge: another test may
       if (this.skipped(key)) continue;
       if (count > 2) this.problem(key, 'debounce', `typing "${WORD}" in the search field "${name}" sent ${count} reads (limit 2): wait for a pause in the typing before searching`);
       else this.o.pass(key, 'debounce', `${count} read(s) for ${WORD.length} letters`);

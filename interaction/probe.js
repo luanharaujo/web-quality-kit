@@ -109,14 +109,18 @@
   document.addEventListener('pointerdown', (e) => activate(e.target), true);
   document.addEventListener('click', (e) => activate(e.target), true);
   document.addEventListener('submit', (e) => activate(e.submitter || e.target), true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') activate(e.target); }, true);
+  // Enter or space on a control is a tap; in a text field it is typing (a
+  // form's Enter still arrives as its submit).
+  const NOT_TEXT = /^(button|submit|reset|checkbox|radio|file|image|color|range)$/i;
+  const typing = (el) => el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !NOT_TEXT.test(el.type || '')));
+  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !typing(e.target)) activate(e.target); }, true);
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t && t.type === 'file') { activate(t); k.files = t.files ? t.files.length : 0; }
   }, true);
   // A typed or chosen value starts a new action for the read checks only
   // (a filter A, then B, then A again is three actions).
-  const newAction = () => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction('value'); };
+  const newAction = (e) => { if (!k.suppress && typeof window.__kitAction === 'function') window.__kitAction(e.type); };
   document.addEventListener('input', newAction, true);
   document.addEventListener('change', newAction, true);
   document.addEventListener('drop', (e) => {
