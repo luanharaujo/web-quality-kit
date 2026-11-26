@@ -1,0 +1,68 @@
+# Opens a pull request when the Node.js LTS line this repository pins has a
+# newer patch or minor (nodejs.org's own release list; no Renovate). Only
+# exact pins in .node-version, .nvmrc and package.json "engines.node" change,
+# never the major. One PR per target version; if its branch exists (a PR is
+# open, or the owner closed it and kept the branch to say no), nothing.
+#
+# Commits go through the GitHub API with the given token, so they are signed
+# by GitHub as that App. Use a GitHub App token (actions/create-github-app-token):
+# a PR opened with the default GITHUB_TOKEN does not run the repo's CI.
+# Template: templates/node-update.yml. Check out the repo before this step.
+name: Node update
+description: Pull request with the newest Node.js patch/minor of the pinned LTS line.
+
+inputs:
+  token:
+    description: GitHub App token with contents and pull-requests write.
+    required: true
+  lang:
+    description: Language of the PR text (pt for private repos, en for public).
+    default: pt
+  index-url:
+    description: Node.js release list.
+    default: https://nodejs.org/dist/index.json
+
+runs:
+  using: composite
+  steps:
+    - name: Propose the newest Node.js of the pinned LTS line
+      shell: bash
+      env:
+        KIT: ${{ github.action_path }}/../..
+        GH_TOKEN: ${{ inputs.token }}
+        LANG_PR: ${{ inputs.lang }}
+        INDEX: ${{ inputs.index-url }}
+      run: |
+        work="$RUNNER_TEMP/node-update"
+        rm -rf "$work" && mkdir -p "$work"
+        python3 "$KIT/scripts/node_update.py" plan "$GITHUB_WORKSPACE" --index "$INDEX" > "$work/plan.json"
+        read -r target newer count < <(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["target"] or "-", p["newer_lts"] or "-", len(p["files"]))' "$work/plan.json")
+        [[ "$newer" != "-" ]] && echo "::notice::A newer LTS exists (Node $newer): moving to a new major is a decision, not an automatic update."
+        if [[ "$count" == "0" ]]; then
+          echo "Node: nothing to update." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+        fi
+        branch="kit/node-$target"
+        if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+          echo "Node $target: already proposed on $branch." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+        fi
+        python3 "$KIT/scripts/node_update.py" apply "$GITHUB_WORKSPACE" "$work/plan.json"
+        python3 "$KIT/scripts/node_update.py" body "$work/plan.json" --lang "$LANG_PR" > "$work/body.md"
+        title=$(head -1 "$work/body.md")
+        tail -n +2 "$work/body.md" > "$work/pr.md"
+        base=$(gh api "repos/$GITHUB_REPOSITORY" -q .default_branch)
+        if [[ "$GITHUB_REF_NAME" != "$base" ]]; then
+          echo "::error::Run this on $base: the new files are made from the checked-out branch ($GITHUB_REF_NAME)."; exit 1
+        fi
+        sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$base" -q .object.sha)
+        gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$branch" -f sha="$sha" >/dev/null
+        # From here a failure must not leave a branch without a PR (it would
+        # read as "already proposed" every week after).
+        trap 'gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" >/dev/null 2>&1 || true' ERR
+        python3 -c 'import json,sys; [print(f["path"]) for f in json.load(open(sys.argv[1]))["files"]]' "$work/plan.json" > "$work/paths"
+        while read -r path; do
+          blob=$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=$branch" -q .sha)
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/$path" -f branch="$branch" -f sha="$blob" \
+            -f message="$title ($path)" -f content="$(base64 < "$GITHUB_WORKSPACE/$path" | tr -d '\n')" >/dev/null
+        done < "$work/paths"
+        url=$(gh pr create -R "$GITHUB_REPOSITORY" --base "$base" --head "$branch" --title "$title" --body-file "$work/pr.md")
+        echo "Node $target: $url" | tee -a "$GITHUB_STEP_SUMMARY"
