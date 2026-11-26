@@ -68,7 +68,11 @@ def plan(repo, index):
     result = {"current": None, "target": None, "security": False, "newer_lts": None, "files": []}
     if not found:
         return result
-    current = max(p[3] for p in found)
+    # The line the repo runs on: its version file, else engines. Pins of
+    # another major (engines "^18.17.0" next to .nvmrc 22) say what else is
+    # supported; changing them is a decision, so they are left alone.
+    runtime = [p for p in found if p[4] == "file"] or found
+    current = max(p[3] for p in runtime)
     result["current"] = ".".join(map(str, current))
     releases = [(ver(r["version"]), r) for r in index if ver(r.get("version", ""))]
     same = [(v, r) for v, r in releases if v[0] == current[0]]
@@ -85,7 +89,7 @@ def plan(repo, index):
     result["target"] = ".".join(map(str, target))
     result["security"] = any(r.get("security") for v, r in same if current < v <= target)
     for path, old, prefix, v, kind in found:
-        if v < target:
+        if v[0] == current[0] and v < target:
             result["files"].append({"path": path, "old": old, "new": prefix + result["target"], "kind": kind})
     return result
 
