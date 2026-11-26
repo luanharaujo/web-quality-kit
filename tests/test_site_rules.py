@@ -245,6 +245,11 @@ for one, dirs in (("_astro/index.C7XQ4K2P.css", site_rules.HASHED_DIRS), ("_astr
                   ("static/main.8a3f2b1c.chunk.js", site_rules.HASHED_DIRS + ("static/",))):
     expect(f"in a build folder the position is enough: {one}", "[hash]" in site_rules.unhash(one, dirs),
            site_rules.unhash(one, dirs))
+for chunk in ("Dfb4kmq1", "a7xq_2pz", "Abcdefgh"):
+    got = site_rules.unhash(f"_app/immutable/chunks/{chunk}.js")
+    expect(f"SvelteKit chunk with an odd-looking hash: {chunk}", got == "_app/immutable/chunks/[hash].js", got)
+expect("a folder name only matches whole: myassets/ is not assets/",
+       site_rules.unhash("myassets/index-Bh-3x9aZ.js", declared=("assets/",)) == "myassets/index-Bh-3x9aZ.js", "")
 expect("a whole name that reads as words is not a hash", site_rules.unhash("_next/static/chunks/main-app.js")
        == "_next/static/chunks/main-app.js", site_rules.unhash("_next/static/chunks/main-app.js"))
 expect("the identity does not depend on the rest of the folder",
@@ -282,6 +287,13 @@ for name in ("index-Bh-3x9aZ.js", "index-4e5f6a7b.css", "inter-C38fXH4l.woff2"):
 r = run(vite)
 expect("undeclared Vite assets/: a note in the result", any("assets/" in n for n in r["notes"]), r["notes"])
 expect("undeclared Vite assets/: no cache case", not any(c["file"].startswith("assets/") for c in r["cache"]), r["cache"])
+# Two builds of the same undeclared Vite site: the same cases, not new ones.
+vite2 = good_site()
+for name in ("index-Dq7_Lm2Z.js", "index-9a8b7c6d.css", "inter-Xp4kQ9Wt.woff2"):
+    write(f"{vite2}/assets/{name}", "x")
+ids = [sorted((c["rule"], c["file"], c["text"]) for k in ("cache", "fonts", "images") for c in run(s)[k]) for s in (vite, vite2)]
+expect("undeclared Vite assets/: a rebuild keeps the case identity", ids[0] == ids[1] and
+       any("assets/inter.[hash].woff2" == f for _, f, _ in ids[0]), ids)
 r = run(vite, config={"cache": {"hashed_dirs": ["assets/"]}})
 expect("declared assets/: its cache is checked, identity without the hash",
        ("cache-hashed", "assets/index.[hash].js") in rules_of(r) and not r["notes"], sorted(rules_of(r)))
@@ -329,6 +341,11 @@ rc, panel = compare(None, metrics(out), "--no-fail")
 expect("absolute: any case fails, even first run with --no-fail", rc == 1, panel)
 rc, panel = compare(None, metrics(good))
 expect("absolute: good site passes", rc == 0, panel)
+noted = metrics(run(vite))
+noted["site_rules"]["notes"] = run(vite)["notes"]
+rc, panel = compare(None, noted)
+expect("a note shows in the panel as a yellow line",
+       any(ln.startswith("🟡") and "assets/" in ln and "hashed_dirs" in ln for ln in panel.splitlines()), panel)
 mig = {"migration": {"reason": "old site, images being converted", "until": "2027-03-01"}}
 old = run(bad, mode="baseline", config=mig)
 rc, panel = compare(None, metrics(old))
