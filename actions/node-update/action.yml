@@ -72,8 +72,13 @@ runs:
         echo "Node $target: $url" | tee -a "$GITHUB_STEP_SUMMARY"
         trap - ERR
         # Older proposals are replaced by this one.
-        gh pr list -R "$GITHUB_REPOSITORY" --state open --json number,headRefName \
-          -q ".[] | select(.headRefName | startswith(\"kit/node-\")) | select(.headRefName != \"$branch\") | .number" |
+        # Only this workflow's own branches (kit/node-X.Y.Z, same repo): a hand-made
+        # branch or a fork's PR with a similar name is never touched.
+        gh pr list -R "$GITHUB_REPOSITORY" --state open --limit 200 --json number,headRefName,isCrossRepository > "$work/open.json"
+        python3 -c 'import json,re,sys
+        for p in json.load(open(sys.argv[1])):
+            if not p["isCrossRepository"] and re.fullmatch(r"kit/node-\d+\.\d+\.\d+", p["headRefName"]) and p["headRefName"] != sys.argv[2]:
+                print(p["number"])' "$work/open.json" "$branch" |
         while read -r old; do
           gh pr close "$old" -R "$GITHUB_REPOSITORY" --delete-branch --comment "Replaced by $url (Node $target)." || true
         done
