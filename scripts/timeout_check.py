@@ -24,6 +24,7 @@ FLOOR_S = 30
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".build", "vendor", "coverage", ".wrangler",
              ".venv", "venv", "__pycache__", "DerivedData", "Pods", "playwright-report", "test-results"}
 MAX_BYTES = 800_000
+MAX_LINE = 2_000  # a longer line is generated code: skipped, so the patterns stay fast
 
 JS = (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx")
 SH = (".sh", ".bash", ".zsh")
@@ -170,6 +171,8 @@ def scan(path, kind, text):
     section = pytest_section(lines) if kind == "ini" else None
     found = []
     for i, line in enumerate(lines):
+        if len(line) > MAX_LINE:
+            continue
         stripped = line.lstrip()
         if stripped.startswith(COMMENT.get(kind, ("#",))):
             continue
@@ -208,9 +211,11 @@ def raised(text):
     """True when a vitest or Playwright config already sets a CI-safe limit."""
     # Comments do not count. A "/*" inside a glob such as '**/*.ts' follows a
     # quote or a star, never a space, so it is left alone.
+    text = "\n".join(x for x in text[:100_000].split("\n") if len(x) <= MAX_LINE)
     code = re.sub(r"(?<!\S)/\*.*?\*/", " ", text, flags=re.S)
     code = re.sub(r"(?<!\S)//[^\n]*", " ", code)
-    helper = re.search(r"\b(vitestTimeouts|playwrightTimeouts|ciTimeout|ciTimeouts)\b|web-quality-kit-interaction", code)
+    helper = re.search(r"\b(vitestTimeouts|playwrightTimeouts|ciTimeout|ciTimeouts)\b|"
+                       r"\bdefineConfig\b[^}\n]{0,200}\}\s{0,20}from\s{0,20}['\"]web-quality-kit-interaction", code)
     conditional = re.search(r"(testTimeout|timeout)\s*:[^,\n}]*\b(CI|isCI|inCI)\b", code)
     limits = [m.group(2).strip() for m in
               re.finditer(r"\b(testTimeout|expect\s*:\s*\{\s*timeout)\s*:\s*([^,}\n]+)", code)]

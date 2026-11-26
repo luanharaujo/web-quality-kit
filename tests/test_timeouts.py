@@ -146,6 +146,20 @@ seen = timeout_check.check(long_names)
 check("a long crafted file name is matched at once, and hyphenated config names still count",
       time.time() - start < 20 and "b/vitest.e2e-slow.config.ts" in [c["file"] for c in seen], seen)
 
+# --- a giant line (generated code) never stalls the check ----------------------
+start = time.time()
+huge = repo({"scripts/test_big.sh": "curl " * 40_000 + "\n" + "playwright test " * 16_000 + "\ncurl -m 3 x\n",
+             "test/big.test.js": " /*" * 100_000 + "\n",
+             "App/Tests/BigTests.swift": "wait(" * 80_000 + "\n",
+             "package.json": '{"devDependencies": {"vitest": "3.0.0"}}', "vitest.config.ts": " /* x\n" * 60_000})
+seen = timeout_check.check(huge)
+check("giant lines are skipped at once, the rest is still read",
+      time.time() - start < 30 and ("scripts/test_big.sh", 3) in [(c["file"], c["line"]) for c in seen],
+      [time.time() - start, seen[:3]])
+check("only the kit's defineConfig counts as raised",
+      timeout_check.raised("import { defineConfig, devices } from 'web-quality-kit-interaction'\n")
+      and not timeout_check.raised("import { devices } from 'web-quality-kit-interaction'\n"))
+
 # --- a tree that carries a bare repository never runs its command --------------
 marker = os.path.join(tempfile.mkdtemp(), "ran")
 trap = repo({"HEAD": "ref: refs/heads/main\n",
@@ -197,7 +211,7 @@ check("shell: in CI a 1 s wait for a 3 s start is green", r.returncode == 0, r.s
 node = shutil.which("node")
 if node:
     js = ("const t = await import(process.argv[1]); const c = await import(process.argv[2]);"
-          "console.log(JSON.stringify([t.vitestTimeouts(), t.playwrightTimeouts(), t.ciTimeout(0),"
+          "console.log(JSON.stringify([t.vitestTimeouts(), t.playwrightTimeouts(), t.ciTimeout(0) + (c.ciExtra() === (t.inCI() ? 20000 : 0) ? 0 : 1),"
           "c.ciLimits({ use: { actionTimeout: 1000 }, projects: [{ expect: { timeout: 1000 } }], webServer: { command: 'x' } })]))")
 
     def run_js(ci, mode=""):

@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { WRITE_METHODS, routeKey, keyMatches } from './routes.mjs';
 import { settings, report } from './report.mjs';
 import { Reads } from './reads.mjs';
-import { ciTimeout, ciTestTimeout, ciLimits } from './ci.mjs';
+import { ciTimeout, ciTestTimeout, ciExtra, ciLimits } from './ci.mjs';
 
 export { expect };
 export { devices } from '@playwright/test';
@@ -312,6 +312,7 @@ class Interaction {
     await proceed();
 
     if (upload) {
+      this.room();
       await Promise.race([request.response().catch(() => null), sleep(ciTimeout(5000, 10_000))]);
       let confirmed = null;
       for (let i = 0; i < looks(30); i++) {
@@ -327,7 +328,13 @@ class Interaction {
     }
   }
 
+  /** In CI the waits for this action's checks must not eat the test's time. */
+  room() {
+    if (this.testInfo.timeout) this.testInfo.setTimeout(this.testInfo.timeout + ciExtra());
+  }
+
   async failChecks(route, request, key) {
+    this.room();
     const { page } = this;
     const upload = isUpload(request);
     const before = await this.state();
