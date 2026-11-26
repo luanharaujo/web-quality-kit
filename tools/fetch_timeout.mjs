@@ -11,9 +11,17 @@
 // is read as fetch(url, init) (a signal in either init counts), and a Worker
 // forwarding its own incoming request (the first parameter of a `fetch`
 // handler) is not an outbound call to a third party.
+// obs.fetch (the request-id helper's fetch, templates/server/observe.ts) is a
+// plain fetch: it adds the id, not a time limit. An unchanged copy of the
+// kit's helper is skipped: its one fetch passes on the caller's signal.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
+
+const HELPERS = new Set(['observe.ts', 'd1_queries.ts'].map((n) => {
+  try { return fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'server', n), 'utf8') } catch { return null }
+}).filter((t) => t !== null))
 
 const EXT = /\.(m|c)?(j|t)sx?$/
 const SKIP = new Set(['node_modules', '.git', '.wrangler', 'dist', 'build', 'coverage'])
@@ -31,13 +39,14 @@ for (let i = 0; i < argv.length; i++) {
 
 function files(p) {
   if (!fs.existsSync(p)) { console.error(`source not found: ${p}`); process.exit(2) }
-  if (fs.statSync(p).isFile()) return EXT.test(p) ? [p] : []
+  if (fs.statSync(p).isFile()) return EXT.test(p) && !HELPERS.has(fs.readFileSync(p, 'utf8')) ? [p] : []
   const out = []
   for (const e of fs.readdirSync(p, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue
     const q = path.join(p, e.name)
     if (e.isDirectory()) out.push(...files(q))
-    else if (EXT.test(e.name) && !/\.(test|spec)\./.test(e.name) && !e.name.endsWith('.d.ts')) out.push(q)
+    else if (EXT.test(e.name) && !/\.(test|spec)\./.test(e.name) && !e.name.endsWith('.d.ts') &&
+             !HELPERS.has(fs.readFileSync(q, 'utf8'))) out.push(q)
   }
   return out
 }
@@ -55,6 +64,18 @@ function urlStart(node) {
     return node.arguments.length > 1 ? urlStart(node.arguments[1]) : first
   }
   return null
+}
+
+// obs in withObservability(req, env, (env, obs) => ...), or any value named obs.
+function isObs(node) {
+  if (!ts.isIdentifier(node)) return false
+  if (node.text === 'obs') return true
+  for (let p = node.parent; p; p = p.parent) {
+    if (!ts.isFunctionLike(p) || !p.parameters?.some((q) => binds(q.name, node.text))) continue
+    const call = p.parent
+    return !!call && ts.isCallExpression(call) && call.expression.getText().split('.').pop() === 'withObservability'
+  }
+  return false
 }
 
 const isNewRequest = (n) => n && ts.isNewExpression(n) && n.expression.getText() === 'Request' && n.arguments?.length
@@ -201,7 +222,8 @@ for (const t of targets) {
         const callee = node.expression
         const plain = (ts.isIdentifier(callee) && callee.text === 'fetch') ||
           (ts.isPropertyAccessExpression(callee) && callee.name.text === 'fetch' &&
-           ts.isIdentifier(callee.expression) && ['globalThis', 'self', 'window'].includes(callee.expression.text))
+           (isObs(callee.expression) ||
+            (ts.isIdentifier(callee.expression) && ['globalThis', 'self', 'window'].includes(callee.expression.text))))
         let [target, init] = node.arguments
         let sig = null
         if (target && ts.isIdentifier(target) && !isIncomingRequest(target)) {

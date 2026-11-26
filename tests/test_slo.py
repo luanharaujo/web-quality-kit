@@ -213,5 +213,20 @@ p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo",
                     "--data", os.path.join(t, "d.json")], capture_output=True, text=True)
 check("alert CLI: invalid slo.json exits 2", p.returncode == 2, p.stdout)
 
+json.dump(GOOD, open(os.path.join(t, "slo.json"), "w"))
+for label, bad in (("no now", {"minutes": []}), ("minutes is null", {"now": iso(NOW), "minutes": None}),
+                   ("a minute without requests", {"now": iso(NOW), "minutes": [{"t": iso(NOW), "errors": 0}]}),
+                   ("a list instead of an object", [])):
+    json.dump(bad, open(os.path.join(t, "d.json"), "w"))
+    p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo", os.path.join(t, "slo.json"),
+                        "--data", os.path.join(t, "d.json")], capture_output=True, text=True)
+    check(f"alert CLI: numbers with {label} exit 3 with a JSON error, no traceback",
+          p.returncode == 3 and json.loads(p.stdout)["error"] == "invalid numbers" and "Traceback" not in p.stderr,
+          p.stdout + p.stderr)
+open(os.path.join(t, "d.json"), "w").write("{not json")
+p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo", os.path.join(t, "slo.json"),
+                    "--data", os.path.join(t, "d.json")], capture_output=True, text=True)
+check("alert CLI: a broken numbers file exits 3", p.returncode == 3 and "Traceback" not in p.stderr, p.stdout + p.stderr)
+
 print("slo: " + ("ok" if not fails else f"{fails} failed"))
 sys.exit(1 if fails else 0)
