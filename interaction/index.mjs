@@ -41,10 +41,12 @@ export { routeKey, keyMatches, normalizePath } from './routes.mjs';
 export { settings, report } from './report.mjs';
 
 // Same rule as the kit's server helper (templates/server/observe.ts validId):
-// 8 to 64 of A-Z a-z 0-9 _ -, a letter, and no run of 8+ digits outside a UUID.
+// 8 to 64 of A-Z a-z 0-9 _ -, a letter, and no run of 8+ digits outside a UUID
+// (counting across - and _).
 // An id the server refuses is replaced there, and the code shown would not be in the log.
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const validRequestId = (id) => /^[A-Za-z0-9_-]{8,64}$/.test(id) && /[A-Za-z]/.test(id) && !/\d{8}/.test(id.replace(UUID, ''));
+const validRequestId = (id) =>
+  /^[A-Za-z0-9_-]{8,64}$/.test(id) && /[A-Za-z]/.test(id) && !/\d{8}/.test(id.replace(UUID, '').replace(/[-_]/g, ''));
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROBE = fs.readFileSync(path.join(HERE, 'probe.js'), 'utf8');
 
