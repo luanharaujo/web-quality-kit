@@ -179,9 +179,11 @@ def load_config(path: str | None) -> dict:
 # Checks the fixture runs. A check main's numbers do not know yet (added by
 # a newer kit) only warns in baseline mode: updating the kit must not turn a
 # repository red for something its main was never measured on.
-KNOWN_CHECKS = ["busy", "contract", "double", "error-alert", "error-code", "error-keeps-input", "error-retry",
-                "error-retry-sends", "optimistic", "request-id", "upload-confirm", "upload-dropzone",
-                "upload-independent", "upload-progress"]
+# Every check name the fixture emits (tests/test_interaction_gate.py compares
+# this list with interaction/*.mjs, so a new check cannot be forgotten here).
+KNOWN_CHECKS = ["busy", "contract", "debounce", "double", "error-alert", "error-code", "error-keeps-input",
+                "error-retry", "error-retry-sends", "loading-state", "optimistic", "read-duplicate", "request-id",
+                "upload-confirm", "upload-dropzone", "upload-independent", "upload-progress"]
 CHECKS_BEFORE_1_20 = set(KNOWN_CHECKS) - {"request-id", "error-code"}  # main saved by an older kit
 
 
