@@ -40,7 +40,11 @@ export { expectIdempotent } from './contract.mjs';
 export { routeKey, keyMatches, normalizePath } from './routes.mjs';
 export { settings, report } from './report.mjs';
 
-const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
+// Same rule as the kit's server helper (templates/server/observe.ts validId):
+// 8 to 64 of A-Z a-z 0-9 _ -, a letter, and no run of 8+ digits outside a UUID.
+// An id the server refuses is replaced there, and the code shown would not be in the log.
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const validRequestId = (id) => /^[A-Za-z0-9_-]{8,64}$/.test(id) && /[A-Za-z]/.test(id) && !/\d{8}/.test(id.replace(UUID, ''));
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROBE = fs.readFileSync(path.join(HERE, 'probe.js'), 'utf8');
 
@@ -265,9 +269,10 @@ class Interaction {
 
     // 4. request id: every write carries x-request-id, so the error the person
     // sees can be found in the server's log
-    const noId = hold.filter((r) => !REQUEST_ID.test(r.headers()['x-request-id'] || ''));
-    if (noId.length) this.fail(key, 'request-id', `the request has no valid x-request-id (8 to 64 of A-Z a-z 0-9 _ -): make one in the page for each write and send it, so the error message can show it`);
-    else this.pass(key, 'request-id');
+    // A native form post (no script) cannot set headers: the server makes the id.
+    const noId = hold.filter((r) => r.resourceType() !== 'document' && !validRequestId(r.headers()['x-request-id'] || ''));
+    if (noId.length) this.fail(key, 'request-id', `the request has no valid x-request-id (8 to 64 of A-Z a-z 0-9 _ -, with a letter and no run of 8+ digits; crypto.randomUUID() is fine): make one in the page for each write and send it, so the error message can show it`);
+    else this.pass(key, 'request-id', request.resourceType() === 'document' ? 'native form post: the server makes the id' : undefined);
 
     // 3. no success before the server answers
     if (state && state.newSuccess > 0 && !listed(cfg.optimistic, key)) {
@@ -332,7 +337,9 @@ class Interaction {
     else this.pass(key, 'error-alert');
     // the error shows the request's id, for support to find it in the log
     const rid = request.headers()['x-request-id'] || '';
-    if (!REQUEST_ID.test(rid)) {
+    if (request.resourceType() === 'document') {
+      this.pass(key, 'error-code', 'native form post: no page id to show when the network fails');
+    } else if (!validRequestId(rid)) {
       this.fail(key, 'error-code', 'the request had no x-request-id, so the error cannot show its code');
     } else {
       const texts = alertOk ? await alert.allInnerTexts().catch(() => []) : [];

@@ -176,6 +176,15 @@ def load_config(path: str | None) -> dict:
     return cfg
 
 
+# Checks the fixture runs. A check main's numbers do not know yet (added by
+# a newer kit) only warns in baseline mode: updating the kit must not turn a
+# repository red for something its main was never measured on.
+KNOWN_CHECKS = ["busy", "contract", "double", "error-alert", "error-code", "error-keeps-input", "error-retry",
+                "error-retry-sends", "optimistic", "request-id", "upload-confirm", "upload-dropzone",
+                "upload-independent", "upload-progress"]
+CHECKS_BEFORE_1_10 = set(KNOWN_CHECKS) - {"request-id", "error-code"}  # main saved by an older kit
+
+
 def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
     seen = {e["route"] for e in entries if e.get("type") == "seen"}
     undeclared = sorted(s for s in seen if not any(key_matches(s, r) for r in routes["routes"]))
@@ -200,6 +209,7 @@ def collect(routes: dict, entries: list[dict], cfg: dict) -> dict:
         "unmapped": routes.get("unmapped", []),
         "seen_undeclared": undeclared,
         "where": {r: routes.get("where", {}).get(r, "") for r in routes["routes"]},
+        "checks_known": KNOWN_CHECKS,
     }
 
 
@@ -253,6 +263,9 @@ def compare(base: dict | None, cur: dict, mode: str, lang: str) -> tuple[str, bo
             new_items = []
         else:
             new_items = [i for i in items if i not in old]
+            if field == "failing":
+                known = set(base.get("checks_known") or CHECKS_BEFORE_1_10)
+                new_items = [i for i in new_items if i.rsplit(" ", 1)[-1] in known]
         red = bool(new_items)
         worse |= red
         dot = "🔴" if red else ("🟡" if items else "🟢")

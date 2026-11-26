@@ -142,6 +142,17 @@ class Compare(unittest.TestCase):
         self.assertFalse(worse)
         self.assertIn("🟡 1 read checks in warning mode", panel)
 
+    def test_check_main_never_ran_only_warns(self):
+        old_main = health()  # saved by a kit before request-id and error-code
+        panel, worse = g.compare(old_main, health(failing=["POST /a request-id", "POST /a error-code"]), "baseline", "en")
+        self.assertFalse(worse)
+        self.assertIn("🟡 2 checks failing", panel)
+        _, worse = g.compare(old_main, health(failing=["POST /a double"]), "baseline", "en")
+        self.assertTrue(worse)
+        new_main = dict(health(), checks_known=g.KNOWN_CHECKS)
+        _, worse = g.compare(new_main, health(failing=["POST /a request-id"]), "baseline", "en")
+        self.assertTrue(worse)
+
     def test_all_covered_is_green(self):
         panel, worse = g.compare(health(), health(covered=["POST /a", "POST /b"]), "new", "en")
         self.assertFalse(worse)
