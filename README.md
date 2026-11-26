@@ -127,7 +127,7 @@ function siteverifyUrl(override) {
 }
 ```
 
-`mode: "absolute"` (new repository, the template): everything fails. `mode: "baseline"`: for repositories that existed before the policy (needs the `mode:baseline` exception; which repositories may use it is decided outside this kit); the finding ids listed in `baseline` are tolerated and the list may only shrink against main (each occurrence has its own id: a second one in the same file or route ends in `#2`). Folders `scripts/` and `ops/` are read only where the code answers requests. Static rules read the handler (`"handler": "file:function"`, or the route literal) and cannot see D1 use through a helper: list helpers in `d1_calls`. Proof: `tests/test_auth.py` with a good and a bad example server in `tests/cases/auth/`.
+`mode: "absolute"` (new repository, the template): everything fails. `mode: "baseline"`: for repositories that existed before the policy (needs the `mode:baseline` exception; which repositories may use it is decided outside this kit); the finding ids listed in `baseline` are tolerated and the list may only shrink against main (each occurrence has its own id: a second one in the same file or route ends in `#2`; a password login has one id per file, `A1:password:<file>`). Folders `scripts/` and `ops/` are read only where the code answers requests. Static rules read the handler (`"handler": "file:function"`, or the route literal) and cannot see D1 use through a helper: list helpers in `d1_calls`. Proof: `tests/test_auth.py` with a good and a bad example server in `tests/cases/auth/`.
 
 ## Logs and request ids of a server (`observability`)
 

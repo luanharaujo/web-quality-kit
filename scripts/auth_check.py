@@ -136,7 +136,9 @@ def read(p):
 
 def strip_comments(text, ext):
     """The text with comments blanked (same length and lines): commented-out
-    code never satisfies a rule, and a comment is never a finding."""
+    code never satisfies a rule. When in doubt the text is kept: a block
+    comment counts only if it closes and does not start glued to a word, a
+    "//" glued to ":" is part of a URL, and in HTML only <!-- --> is removed."""
     out = list(text)
 
     def blank(a, b):
@@ -149,6 +151,24 @@ def strip_comments(text, ext):
     sql = ext == ".sql"
     slashes = not (html or hashed or sql)
     i, n = 0, len(text)
+
+    def string_end(j, depth=0):
+        """Where the string that opens at j ends, with the ${} of a template."""
+        q = text[j]
+        j += 1
+        while j < n and text[j] != q and (q == "`" or text[j] != "\n"):
+            if q == "`" and depth < 20 and text.startswith("${", j):
+                j, level = j + 2, 1
+                while j < n and level:
+                    if text[j] in "\"'`":
+                        j = string_end(j, depth + 1)
+                        continue
+                    level += (text[j] == "{") - (text[j] == "}")
+                    j += 1
+                continue
+            j += 2 if text[j] == "\\" else 1
+        return j + 1
+
     while i < n:
         c = text[i]
         if html:
@@ -160,23 +180,21 @@ def strip_comments(text, ext):
             else:
                 i += 1
         elif c in "\"'" or (c == "`" and slashes):
-            j = i + 1
-            while j < n and text[j] != c and (c == "`" or text[j] != "\n"):
-                j += 2 if text[j] == "\\" else 1
-            i = j + 1
-        elif (hashed and c == "#") or (sql and text.startswith("--", i)) or (slashes and text.startswith("//", i)):
+            i = string_end(i)
+        elif (hashed and c == "#") or (sql and text.startswith("--", i)) or (
+                slashes and text.startswith("//", i) and text[i - 1:i] != ":"):
             end = text.find("\n", i)
             end = n if end < 0 else end
             blank(i, end)
             i = end
-        elif (slashes or sql) and text.startswith("/*", i):
-            end = text.find("*/", i + 2)
-            end = n if end < 0 else end + 2
+        elif (slashes or sql) and text.startswith("/*", i) and (
+                i == 0 or text[i - 1].isspace() or text[i - 1] in "({,;=})") and text.find("*/", i + 2) >= 0:
+            end = text.find("*/", i + 2) + 2
             blank(i, end)
             i = end
         elif slashes and c == "\\":
             i += 2
-        elif slashes and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+*%~^-]|\breturn)\s*$", text[max(0, i - 40):i]):
+        elif slashes and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+*%~^>-]|\breturn)\s*$", text[max(0, i - 40):i]):
             # A regular expression literal: quotes and slashes in it are its own.
             j, inside = i + 1, False
             while j < n and text[j] != "\n" and (inside or text[j] != "/"):
@@ -343,9 +361,10 @@ def check_password(cfg, root, srcs, fnd):
         first = {}
         for rel, i in uses:
             first.setdefault(rel, f"{rel}:{i}")
-        # One per file: a baseline that tolerates one never covers a new file.
-        for where in list(first.values()) or [".quality/auth.json"]:
-            fnd.add("A1", "password", where,
+        # One id per file: a baseline that tolerates one never covers another.
+        found = [(f"password:{rel}", where) for rel, where in first.items()]
+        for subject, where in found or [("password", ".quality/auth.json")]:
+            fnd.add("A1", subject, where,
                     "password login is forbidden by default (passkey or code); a registered exception needs reason, approved_by, date and the algorithm")
         return
     if not exc:

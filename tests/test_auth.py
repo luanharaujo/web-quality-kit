@@ -427,6 +427,16 @@ check("strip_comments keeps strings, patterns and code",
 check("strip_comments reads SQL and TOML comments",
       ac.strip_comments("a -- b\n", ".sql") == "a     \n" and ac.strip_comments('x = "#"  # y\n', ".toml") == 'x = "#"     \n')
 
+for name, sample in [
+        ("a pattern after an arrow", "const bad = (s) => /[/*]/.test(s);\nawait limit(k); /* c */\n"),
+        ("text glued to /*", "<a>see src/* here</a>\nverifyPassword(p);\n/* c */\n"),
+        ("an unclosed block comment", "x = a /* b\nverifyPassword(p);\n"),
+        ("a template inside a template", 'const m = `a ${x ? `//` : ""} b`; await verifyTurnstile(t);\n'),
+        ("a URL in markup", "<p>see https://x.test</p>; verifyPassword(p);\n")]:
+    check(f"strip_comments keeps the code: {name}",
+          ac.strip_comments(sample, ".js") == sample.replace("/* c */", "       "),
+          repr(ac.strip_comments(sample, ".js")))
+
 app = copy_case("good")
 c = load("good")
 c["server"]["start"] = "UNUSED=${UNUSED:-1}; " + c["server"]["start"]
@@ -443,7 +453,7 @@ app = copy_case("good")
 put(app, "src/a.js", "export const a = (p) => verifyPassword(p);\n")
 put(app, "src/b.js", "export const b = (p) => verifyPassword(p);\n")
 found = {i for i in ids(run(app, dynamic=False)) if i.startswith("A1:password")}
-check("A1: each file with a password login has its own id", found == {"A1:password", "A1:password#2"}, found)
+check("A1: each file with a password login has its own id", found == {"A1:password:src/a.js", "A1:password:src/b.js"}, found)
 
 # A baseline never covers a new occurrence.
 app = copy_case("bad")
