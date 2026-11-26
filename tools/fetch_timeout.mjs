@@ -19,8 +19,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
+// Line endings do not count (a CRLF checkout of the helper is the same file).
+const lf = (t) => t.replace(/\r\n/g, '\n')
 const HELPERS = new Set(['observe.ts', 'd1_queries.ts'].map((n) => {
-  try { return fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'server', n), 'utf8') } catch { return null }
+  try { return lf(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'server', n), 'utf8')) } catch { return null }
 }).filter((t) => t !== null))
 
 const EXT = /\.(m|c)?(j|t)sx?$/
@@ -39,14 +41,14 @@ for (let i = 0; i < argv.length; i++) {
 
 function files(p) {
   if (!fs.existsSync(p)) { console.error(`source not found: ${p}`); process.exit(2) }
-  if (fs.statSync(p).isFile()) return EXT.test(p) && !HELPERS.has(fs.readFileSync(p, 'utf8')) ? [p] : []
+  if (fs.statSync(p).isFile()) return EXT.test(p) && !HELPERS.has(lf(fs.readFileSync(p, 'utf8'))) ? [p] : []
   const out = []
   for (const e of fs.readdirSync(p, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue
     const q = path.join(p, e.name)
     if (e.isDirectory()) out.push(...files(q))
     else if (EXT.test(e.name) && !/\.(test|spec)\./.test(e.name) && !e.name.endsWith('.d.ts') &&
-             !HELPERS.has(fs.readFileSync(q, 'utf8'))) out.push(q)
+             !HELPERS.has(lf(fs.readFileSync(q, 'utf8')))) out.push(q)
   }
   return out
 }
@@ -66,14 +68,18 @@ function urlStart(node) {
   return null
 }
 
-// obs in withObservability(req, env, (env, obs) => ...), or any value named obs.
+// obs: the second parameter of the handler in withObservability(req, env,
+// (env, obs) => ...), or any value named obs. The first parameter is env:
+// its bindings (env.API.fetch, a destructured { API }) stay internal.
 function isObs(node) {
   if (!ts.isIdentifier(node)) return false
   if (node.text === 'obs') return true
   for (let p = node.parent; p; p = p.parent) {
     if (!ts.isFunctionLike(p) || !p.parameters?.some((q) => binds(q.name, node.text))) continue
+    const second = p.parameters[1]
     const call = p.parent
-    return !!call && ts.isCallExpression(call) && call.expression.getText().split('.').pop() === 'withObservability'
+    return !!second && ts.isIdentifier(second.name) && second.name.text === node.text &&
+      !!call && ts.isCallExpression(call) && call.expression.getText().split('.').pop() === 'withObservability'
   }
   return false
 }

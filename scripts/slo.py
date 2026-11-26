@@ -48,7 +48,8 @@ while an incident is open nothing is repeated, except the first time it turns
 severe; it closes when the last 30 minutes of numbers look fine (see
 looks_fine), measured on the numbers, not on the clock between runs.
 Exit 2: slo.json invalid; exit 3: numbers file unreadable or malformed
-({"error": "invalid numbers", "problems": [...]}).
+({"error": "invalid numbers", "problems": [...]}). A state file that cannot be
+read is replaced (the output says so in "warnings").
 """
 import argparse
 import datetime as dt
@@ -60,6 +61,7 @@ import sys
 DEFAULT_ALERT = {"error_pct": 5.0, "minutes": 5, "min_requests": 20, "min_errors": 5, "severe_error_pct": 20.0,
                  "severe_burn": 14.4, "max_delay_min": 15}
 CLOSE_AFTER_MIN = 30
+MAX_MINUTES = 10000  # about a week of minutes; the alert reads the last hour
 OWNER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{1,39}$")
 FIELDS = {"service", "owner", "availability_pct", "latency_p95_ms", "window_days", "alert"}
 
@@ -170,7 +172,9 @@ def data_problems(data):
     if not isinstance(minutes, list):
         out.append("minutes: not a list")
         minutes = []
-    for i, m in enumerate(minutes[:2000]):
+    if len(minutes) > MAX_MINUTES:
+        return [f"minutes: {len(minutes)} items, more than {MAX_MINUTES} (send the last hours only)"]
+    for i, m in enumerate(minutes):
         if not isinstance(m, dict):
             out.append(f"minutes[{i}]: not an object")
             continue
@@ -309,11 +313,20 @@ def main():
         # The caller fetched these over the network: a clear error, never a traceback.
         print(json.dumps({"error": "invalid numbers", "problems": bad}))
         return 3
-    state = None
+    state, warning = None, None
     if a.state and os.path.exists(a.state):
-        with open(a.state) as f:
-            state = json.load(f)
-    print(json.dumps(evaluate(slo, data, state), ensure_ascii=False))
+        # A broken state file must not mute every run after it: start over and say so.
+        try:
+            with open(a.state) as f:
+                state = json.load(f)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            state = None
+        if not isinstance(state, dict):
+            state, warning = None, "state file unreadable: started over (an open incident may be announced again)"
+    out = evaluate(slo, data, state)
+    if warning:
+        out["warnings"] = [warning]
+    print(json.dumps(out, ensure_ascii=False))
     return 0
 
 

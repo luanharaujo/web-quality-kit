@@ -32,10 +32,11 @@ Config (observability.json, paths relative to the repository root):
   seed            optional command run once before the server starts ({tmp}, n=3)
   headers_command optional, prints a JSON object of request headers (login)
   routes          [{"route": "GET /x", "path": "/x", "body": {...}, "status": 404}] requests
-                  to make; a 4xx or 5xx fails unless it is the route's "status"
+                  to make; a 3xx, 4xx or 5xx fails unless it is the route's "status"
   baseline        {"console": 3} loose console calls tolerated (mode baseline)
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -146,9 +147,10 @@ def probe(server, routes, headers, tmp):
         problems = []
         try:
             st, h = call(server.base, r, headers)
-            if not r.get("unknown") and st >= 400 and st != r.get("status"):
+            if not r.get("unknown") and st >= 300 and st != r.get("status"):
                 problems.append(f"the route answered {st}, so its work was not exercised (login in headers_command? "
-                                f"body or path wrong? server error?); a route meant to answer {st} says \"status\": {st}")
+                                f"redirect to a login? body or path wrong? server error?); "
+                                f"a route meant to answer {st} says \"status\": {st}")
             got = h.get(HEADER)
             if not got:
                 problems.append(f"no {HEADER} in the response (status {st})")
@@ -164,8 +166,8 @@ def probe(server, routes, headers, tmp):
                 if h.get(HEADER) == bad or not ID_OK.match(h.get(HEADER) or ""):
                     problems.append(f"an invalid {HEADER} ({bad!r}) was not replaced by a valid one")
                     break
-        except (urllib.error.URLError, OSError) as e:
-            problems.append(f"request failed: {e}")
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            problems.append(f"request failed: {redact(str(e) or type(e).__name__)}")
         if len(sent) < len(results) + 1:
             sent.append(None)
         results.append({"route": r["route"], "problems": problems})
@@ -236,7 +238,11 @@ def check(cfg, root):
         except (RuntimeError, json.JSONDecodeError) as e:
             err.append(str(e))
             cases = []
-        allowed = int(cfg.get("baseline", {}).get("console", 0)) if out["mode"] == "baseline" else 0
+        tolerated = (cfg.get("baseline") or {}).get("console", 0)
+        if not isinstance(tolerated, int) or isinstance(tolerated, bool) or tolerated < 0:
+            err.append("baseline.console must be a whole number (the loose calls tolerated)")
+            tolerated = 0
+        allowed = tolerated if out["mode"] == "baseline" else 0
         out["console_allowed"] = allowed
         out["baseline_console"] = min(len(cases), allowed)
         out["console"] = cases
@@ -255,6 +261,8 @@ def check(cfg, root):
         headers = {}
         if cfg.get("headers_command"):
             headers = json.loads(run(fill(cfg["headers_command"], tmp=tmp, port=server.port), root, "headers_command"))
+            if not isinstance(headers, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items()):
+                raise RuntimeError("headers_command must print a JSON object of text headers")
         out["routes"], out["log_problems"] = probe(server, routes, headers, tmp)
     except (RuntimeError, KeyError, json.JSONDecodeError) as e:
         err.append(f"server: {redact(str(e))}")

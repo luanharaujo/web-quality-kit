@@ -223,6 +223,20 @@ for label, bad in (("no now", {"minutes": []}), ("minutes is null", {"now": iso(
     check(f"alert CLI: numbers with {label} exit 3 with a JSON error, no traceback",
           p.returncode == 3 and json.loads(p.stdout)["error"] == "invalid numbers" and "Traceback" not in p.stderr,
           p.stdout + p.stderr)
+big = {"now": iso(NOW), "minutes": [{"t": iso(NOW), "requests": 1, "errors": 0}] * 10000 + [{}]}
+json.dump(big, open(os.path.join(t, "d.json"), "w"))
+p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo", os.path.join(t, "slo.json"),
+                    "--data", os.path.join(t, "d.json")], capture_output=True, text=True)
+check("alert CLI: too many minutes exit 3, no traceback", p.returncode == 3 and "Traceback" not in p.stderr, p.stdout[:300] + p.stderr[-300:])
+json.dump(incident, open(os.path.join(t, "d.json"), "w"))
+for label, text in (("empty", ""), ("cut", '{"open": tr'), ("a list", "[]")):
+    open(os.path.join(t, "st.json"), "w").write(text)
+    p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo", os.path.join(t, "slo.json"),
+                        "--data", os.path.join(t, "d.json"), "--state", os.path.join(t, "st.json")], capture_output=True, text=True)
+    ok = p.returncode == 0 and "Traceback" not in p.stderr
+    out = json.loads(p.stdout) if ok else {}
+    check(f"alert CLI: a state file that is {label} starts over and warns (the alert never goes mute)",
+          ok and out.get("notify") == "owner" and out.get("warnings"), p.stdout + p.stderr)
 open(os.path.join(t, "d.json"), "w").write("{not json")
 p = subprocess.run([sys.executable, os.path.join(S, "slo.py"), "alert", "--slo", os.path.join(t, "slo.json"),
                     "--data", os.path.join(t, "d.json")], capture_output=True, text=True)
