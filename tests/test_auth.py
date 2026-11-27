@@ -495,6 +495,21 @@ pt = tempfile.mkdtemp()
 open(os.path.join(pt, "a.js"), "w").write('db.prepare("SELECT 1 FROM codigos_login");\n')
 check("a Portuguese login-code table is a login", ids(run(pt, {}, declared=False)) == {"A0:undeclared"})
 
+# --- the assembled site (build output) is not the repository's source -------------------
+site = tempfile.mkdtemp()
+put(site, "index.html", "<h1>site</h1>")
+put(site, "_site/part/js/api.js", 'db.prepare("SELECT 1 FROM login_codes");\n')
+check("no git: _site is read", ids(run(site, {}, declared=False)) == {"A0:undeclared"})
+subprocess.run(["git", "-C", site, "init", "-q"], check=True)
+subprocess.run(["git", "-C", site, "add", "index.html"], check=True)
+r = run(site, {}, declared=False)
+check("an untracked _site at the root is not read", r["findings"] == [] and not r["login"], r["findings"])
+put(site, "src/_site/api.js", 'db.prepare("SELECT 1 FROM login_codes");\n')
+check("a _site below the root is read", ids(run(site, {}, declared=False)) == {"A0:undeclared"})
+shutil.rmtree(os.path.join(site, "src"))
+subprocess.run(["git", "-C", site, "add", "-f", "_site"], check=True)
+check("a committed _site is read", ids(run(site, {}, declared=False)) == {"A0:undeclared"})
+
 # --- the policy is the policy: Cloudflare's public test secrets ----------------------
 check("test secrets are Cloudflare's public ones",
       ac.TURNSTILE_TEST == {"pass": "1x0000000000000000000000000000000AA", "fail": "2x0000000000000000000000000000000AA",

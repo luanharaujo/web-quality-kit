@@ -102,7 +102,7 @@ The panel goes to the run summary: 🟢🟡🔴, bars, arrows against main (↑ 
 
 ## Login policy (`auth-config`)
 
-Always on. A repository with a login declares it in `.quality/auth.json` (`templates/auth.json`: methods, identifier, routes, how to start the server). A login found in the source (passkey calls, a login-code table, `/login` or sign-up routes, a password field) with no declaration fails; so does `"login": false` in a repository that has one.
+Always on. A repository with a login declares it in `.quality/auth.json` (`templates/auth.json`: methods, identifier, routes, how to start the server). A login found in the source (passkey calls, a login-code table, `/login` or sign-up routes, a password field) with no declaration fails; so does `"login": false` in a repository that has one. A `_site` folder at the root with no file tracked by git (the assembled site) is not read.
 
 **Switches that weaken the check** need an entry in `exceptions` (`hatch`, `reason`, `approved_by`, `date`); the panel lists every active one. Hatch ids: `login:false`, `public:false:<route>`, `anonymous_writes:false:<route>`, `log_in_helper:<route>`, `ignore_paths:<path>`, `password_exception`, `mode:baseline`, `no_dynamic:<route>` (no `server` or `body`), `auth-dynamic:false`. Against main, these also fail without an entry: `route_removed:<route>`, `source_narrowed`, `d1_calls_removed:<name>` (these accept an entry), and a switch from `absolute` to `baseline` (fails even with one). `auth-config: "off"` works only in the kit's own repository. The baseline never tolerates a switch.
 
