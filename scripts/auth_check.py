@@ -112,13 +112,27 @@ PRIVATE_NAME = re.compile(r"\b(telefone|phone|celular|whatsapp|wa_id|email|e_mai
 CONSOLE = re.compile(r"console\.(log|info|warn|error|debug)\(")
 
 
+def assembled_site(root):
+    """A `_site` folder at the root with no file tracked by git is treated as
+    build output and is not read; it may hold parts built from other
+    repositories. A committed `_site`, or a folder without git, is read."""
+    if not os.path.isdir(os.path.join(root, "_site")):
+        return False
+    try:
+        r = subprocess.run(["git", "-C", root, "ls-files", "--", "_site"], capture_output=True, text=True)
+    except OSError:
+        return False
+    return r.returncode == 0 and not r.stdout.strip()
+
+
 def files(root, only=None):
     out = []
     base = os.path.join(root, only) if only else root
     if os.path.isfile(base):
         return [base]
+    built = {"_site"} if not only and assembled_site(root) else set()
     for dp, dns, fns in os.walk(base):
-        dns[:] = [d for d in dns if d not in SKIP_DIRS]
+        dns[:] = [d for d in dns if d not in SKIP_DIRS and not (dp == base and d in built)]
         for fn in fns:
             p = os.path.join(dp, fn)
             rel = os.path.relpath(p, root)
